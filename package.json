@@ -4,5 +4,11 @@
   "description": "Save & organize your favorite websites",
   "scripts": {
     "start": "node start.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.0"
   }
 }

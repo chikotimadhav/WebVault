@@ -1,0 +1,8 @@
+{
+  "name": "webvault",
+  "version": "1.0.0",
+  "description": "Save & organize your favorite websites",
+  "scripts": {
+    "start": "node start.js"
+  }
+}

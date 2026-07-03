@@ -8,7 +8,9 @@ const websiteSchema = new mongoose.Schema({
     fav: { type: Boolean, default: false },
     visits: { type: Number, default: 0 },
     history: { type: [Number], default: [] },
-    added: { type: Number, default: () => Date.now() }
+    added: { type: Number, default: () => Date.now() },
+    vaultId: { type: String, required: true, trim: true, index: true }
 });
 
 module.exports = mongoose.model('Website', websiteSchema);
+

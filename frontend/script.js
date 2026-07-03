@@ -1,6 +1,6 @@
 (function() {
     // ----- config -----
-    const API_BASE = window.location.origin.includes('localhost:3000') || window.location.origin.includes('127.0.0.1:3000')
+    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         ? 'http://localhost:5000/api/websites'
         : '/api/websites';
 
@@ -26,7 +26,10 @@
     // ----- API helpers -----
     async function apiGet() {
         const res = await fetch(API_BASE);
-        if (!res.ok) throw new Error('Failed to load websites');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to load websites');
+        }
         return res.json();
     }
 
@@ -49,25 +52,37 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        if (!res.ok) throw new Error('Failed to update website');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to update website');
+        }
         return res.json();
     }
 
     async function apiToggleFav(id) {
         const res = await fetch(`${API_BASE}/${id}/fav`, { method: 'PATCH' });
-        if (!res.ok) throw new Error('Failed to toggle favorite');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to toggle favorite');
+        }
         return res.json();
     }
 
     async function apiVisit(id) {
         const res = await fetch(`${API_BASE}/${id}/visit`, { method: 'PATCH' });
-        if (!res.ok) throw new Error('Failed to record visit');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to record visit');
+        }
         return res.json();
     }
 
     async function apiDelete(id) {
         const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Failed to delete website');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to delete website');
+        }
         return res.json();
     }
 
@@ -90,9 +105,13 @@
         try {
             websites = await apiGet();
         } catch (e) {
+            let msg = e.message;
+            if (e instanceof TypeError || msg === 'Failed to fetch') {
+                msg = "Couldn't reach the server. Is the backend running?";
+            }
             grid.innerHTML = `<div class="empty-state">
                 <i class="fas fa-triangle-exclamation" style="font-size:2.4rem;opacity:0.3;"></i>
-                <p style="margin-top:12px;">Couldn't reach the server. Is the backend running?</p>
+                <p style="margin-top:12px;">${msg}</p>
             </div>`;
             websites = [];
         }

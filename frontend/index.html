@@ -504,6 +504,7 @@
       <input type="text" id="searchInput" placeholder="Search apps..." />
     </div>
     <div class="navbar-actions">
+      <button class="btn" id="profileBtn" style="gap: 6px;"><i class="fas fa-user-circle"></i> <span id="profileDisplay">Loading...</span></button>
       <button class="btn btn-primary" id="addBtn"><i class="fas fa-plus"></i> Add</button>
       <button class="theme-toggle" id="themeToggle"><i class="fas fa-moon"></i></button>
     </div>
@@ -569,15 +570,42 @@
   </div>
 </div>
 
+<!-- Profile Modal -->
+<div class="modal-overlay" id="profileModalOverlay">
+  <div class="modal glass" style="background: var(--surface-solid);">
+    <h3><i class="fas fa-user-shield"></i> Vault Profile</h3>
+    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+      Enter your email address below to access your private vault. If you open WebVault with the same email on other devices, your websites will sync. Leaving this empty will lock websites to this specific device/browser using a local ID.
+    </p>
+    
+    <label>Vault Email / ID</label>
+    <input type="text" id="profileEmail" placeholder="e.g. name@mail.com" style="margin-bottom: 12px;" />
+    
+    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+      <button class="btn" id="btnUseLocalDevice" style="font-size: 0.8rem; padding: 6px 12px; height: auto;">
+        <i class="fas fa-laptop"></i> Use Local Device Vault
+      </button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" id="profileModalCancel">Cancel</button>
+      <button class="btn btn-primary" id="profileModalSave"><i class="fas fa-key"></i> Switch Vault</button>
+    </div>
+  </div>
+</div>
+
 <script>
   (function(){
     // ----- config -----
-    const API_BASE = 'http://localhost:5000/api/websites';
+    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000/api/websites'
+        : '/api/websites';
 
     // ----- state -----
     let websites = [];
     let activeFilter = 'all';
     let chartInstances = { today: null, week: null, month: null };
+    let vaultId = '';
 
     // DOM refs
     const grid = document.getElementById('cardGrid');
@@ -597,17 +625,34 @@
     const monthSpan = document.getElementById('monthCount');
     const filterPills = document.getElementById('filterPills');
 
+    // Profile DOM refs
+    const profileBtn = document.getElementById('profileBtn');
+    const profileDisplay = document.getElementById('profileDisplay');
+    const profileModalOverlay = document.getElementById('profileModalOverlay');
+    const profileEmail = document.getElementById('profileEmail');
+    const btnUseLocalDevice = document.getElementById('btnUseLocalDevice');
+    const profileModalCancel = document.getElementById('profileModalCancel');
+    const profileModalSave = document.getElementById('profileModalSave');
+
     // ----- API helpers -----
     async function apiGet() {
-      const res = await fetch(API_BASE);
-      if (!res.ok) throw new Error('Failed to load websites');
+      const res = await fetch(API_BASE, {
+        headers: { 'x-vault-id': vaultId }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to load websites');
+      }
       return res.json();
     }
 
     async function apiCreate(payload) {
       const res = await fetch(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-vault-id': vaultId
+        },
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
@@ -620,28 +665,52 @@
     async function apiUpdate(id, payload) {
       const res = await fetch(`${API_BASE}/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-vault-id': vaultId
+        },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Failed to update website');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update website');
+      }
       return res.json();
     }
 
     async function apiToggleFav(id) {
-      const res = await fetch(`${API_BASE}/${id}/fav`, { method: 'PATCH' });
-      if (!res.ok) throw new Error('Failed to toggle favorite');
+      const res = await fetch(`${API_BASE}/${id}/fav`, { 
+        method: 'PATCH',
+        headers: { 'x-vault-id': vaultId }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to toggle favorite');
+      }
       return res.json();
     }
 
     async function apiVisit(id) {
-      const res = await fetch(`${API_BASE}/${id}/visit`, { method: 'PATCH' });
-      if (!res.ok) throw new Error('Failed to record visit');
+      const res = await fetch(`${API_BASE}/${id}/visit`, { 
+        method: 'PATCH',
+        headers: { 'x-vault-id': vaultId }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to record visit');
+      }
       return res.json();
     }
 
     async function apiDelete(id) {
-      const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete website');
+      const res = await fetch(`${API_BASE}/${id}`, { 
+        method: 'DELETE',
+        headers: { 'x-vault-id': vaultId }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to delete website');
+      }
       return res.json();
     }
 
@@ -652,9 +721,13 @@
         // ensure default values
         websites = websites.map(w => ({ ...w, visits: w.visits || 0, history: w.history || [] }));
       } catch (e) {
+        let msg = e.message;
+        if (e instanceof TypeError || msg === 'Failed to fetch') {
+            msg = "Couldn't reach the server. Is the backend running?";
+        }
         grid.innerHTML = `<div class="empty-state">
             <i class="fas fa-triangle-exclamation" style="font-size:2.4rem;opacity:0.3;"></i>
-            <p style="margin-top:12px;">Couldn't reach the server. Is the backend running?</p>
+            <p style="margin-top:12px;">${msg}</p>
         </div>`;
         websites = [];
       }
@@ -966,8 +1039,34 @@
       setTimeout(renderCharts, 100);
     }
 
+    // ----- Vault Profile Management -----
+    function getOrCreateVaultId() {
+      let id = localStorage.getItem('webvault_vault_id');
+      if (!id) {
+        const rand = Math.random().toString(36).substring(2, 10);
+        id = `device-${rand}`;
+        localStorage.setItem('webvault_vault_id', id);
+      }
+      return id;
+    }
+
+    function updateProfileDisplay() {
+      const id = localStorage.getItem('webvault_vault_id') || '';
+      if (id.startsWith('device-')) {
+        profileDisplay.textContent = 'Local Device';
+        profileBtn.title = `Using Local Device Vault (${id})`;
+      } else {
+        profileDisplay.textContent = id;
+        profileBtn.title = `Using Vault: ${id}`;
+      }
+    }
+
     // ----- init -----
     async function init() {
+      // Initialize Vault ID
+      vaultId = getOrCreateVaultId();
+      updateProfileDisplay();
+
       await loadFromServer();
       render();
 
@@ -997,6 +1096,62 @@
           activeFilter = pill.dataset.filter;
           render();
         });
+      });
+
+      // Vault profile listeners
+      profileBtn.addEventListener('click', () => {
+        const current = localStorage.getItem('webvault_vault_id') || '';
+        profileEmail.value = current.startsWith('device-') ? '' : current;
+        profileModalOverlay.classList.add('open');
+        setTimeout(() => profileEmail.focus(), 50);
+      });
+
+      profileModalCancel.addEventListener('click', () => {
+        profileModalOverlay.classList.remove('open');
+      });
+
+      profileModalOverlay.addEventListener('click', (e) => {
+        if (e.target === profileModalOverlay) profileModalOverlay.classList.remove('open');
+      });
+
+      profileModalSave.addEventListener('click', async () => {
+        const newEmail = profileEmail.value.trim();
+        if (!newEmail) {
+          alert('Please enter a valid email or click "Use Local Device Vault"');
+          return;
+        }
+        if (!newEmail.includes('@') || newEmail.length < 5) {
+          alert('Please enter a valid email address.');
+          return;
+        }
+
+        localStorage.setItem('webvault_vault_id', newEmail);
+        vaultId = newEmail;
+        updateProfileDisplay();
+        profileModalOverlay.classList.remove('open');
+
+        // reload data
+        websites = [];
+        grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
+        await loadFromServer();
+        render();
+        renderCharts();
+      });
+
+      btnUseLocalDevice.addEventListener('click', async () => {
+        const rand = Math.random().toString(36).substring(2, 10);
+        const newId = `device-${rand}`;
+        localStorage.setItem('webvault_vault_id', newId);
+        vaultId = newId;
+        updateProfileDisplay();
+        profileModalOverlay.classList.remove('open');
+
+        // reload data
+        websites = [];
+        grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
+        await loadFromServer();
+        render();
+        renderCharts();
       });
 
       // initial charts

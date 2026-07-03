@@ -634,101 +634,85 @@
     const profileModalCancel = document.getElementById('profileModalCancel');
     const profileModalSave = document.getElementById('profileModalSave');
 
-    // ----- API helpers -----
+    // ----- Local Storage Helpers -----
+    function getStorageKey() {
+      return `webvault_websites_${vaultId}`;
+    }
+
     async function apiGet() {
-      const res = await fetch(API_BASE, {
-        headers: { 'x-vault-id': vaultId }
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to load websites');
+      try {
+        const data = localStorage.getItem(getStorageKey());
+        return data ? JSON.parse(data) : [];
+      } catch (e) {
+        console.error('Error reading from localStorage:', e);
+        return [];
       }
-      return res.json();
     }
 
     async function apiCreate(payload) {
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-vault-id': vaultId
-        },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to add website');
-      }
-      return res.json();
+      const list = await apiGet();
+      const newSite = {
+        _id: 'site_' + Math.random().toString(36).substring(2, 12),
+        title: payload.title,
+        url: payload.url,
+        category: payload.category || 'Others',
+        notes: payload.notes || '',
+        fav: false,
+        visits: 0,
+        history: [],
+        added: Date.now(),
+        vaultId: vaultId
+      };
+      list.push(newSite);
+      localStorage.setItem(getStorageKey(), JSON.stringify(list));
+      return newSite;
     }
 
     async function apiUpdate(id, payload) {
-      const res = await fetch(`${API_BASE}/${id}`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-vault-id': vaultId
-        },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to update website');
-      }
-      return res.json();
+      const list = await apiGet();
+      const site = list.find(w => w._id === id);
+      if (!site) throw new Error('Website not found');
+      if (payload.title !== undefined) site.title = payload.title;
+      if (payload.url !== undefined) site.url = payload.url;
+      if (payload.category !== undefined) site.category = payload.category;
+      if (payload.notes !== undefined) site.notes = payload.notes;
+      localStorage.setItem(getStorageKey(), JSON.stringify(list));
+      return site;
     }
 
     async function apiToggleFav(id) {
-      const res = await fetch(`${API_BASE}/${id}/fav`, { 
-        method: 'PATCH',
-        headers: { 'x-vault-id': vaultId }
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to toggle favorite');
-      }
-      return res.json();
+      const list = await apiGet();
+      const site = list.find(w => w._id === id);
+      if (!site) throw new Error('Website not found');
+      site.fav = !site.fav;
+      localStorage.setItem(getStorageKey(), JSON.stringify(list));
+      return site;
     }
 
     async function apiVisit(id) {
-      const res = await fetch(`${API_BASE}/${id}/visit`, { 
-        method: 'PATCH',
-        headers: { 'x-vault-id': vaultId }
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to record visit');
-      }
-      return res.json();
+      const list = await apiGet();
+      const site = list.find(w => w._id === id);
+      if (!site) throw new Error('Website not found');
+      site.visits = (site.visits || 0) + 1;
+      if (!site.history) site.history = [];
+      site.history.push(Date.now());
+      localStorage.setItem(getStorageKey(), JSON.stringify(list));
+      return site;
     }
 
     async function apiDelete(id) {
-      const res = await fetch(`${API_BASE}/${id}`, { 
-        method: 'DELETE',
-        headers: { 'x-vault-id': vaultId }
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to delete website');
-      }
-      return res.json();
+      let list = await apiGet();
+      list = list.filter(w => w._id !== id);
+      localStorage.setItem(getStorageKey(), JSON.stringify(list));
+      return { success: true };
     }
 
     // ----- helpers -----
     async function loadFromServer() {
       try {
         websites = await apiGet();
-        // ensure default values
         websites = websites.map(w => ({ ...w, visits: w.visits || 0, history: w.history || [] }));
       } catch (e) {
-        let msg = e.message;
-        if (e instanceof TypeError || msg === 'Failed to fetch') {
-            msg = "Couldn't reach the server. Is the backend running?";
-        }
-        grid.innerHTML = `<div class="empty-state">
-            <i class="fas fa-triangle-exclamation" style="font-size:2.4rem;opacity:0.3;"></i>
-            <p style="margin-top:12px;">${msg}</p>
-        </div>`;
         websites = [];
       }
     }

@@ -451,6 +451,28 @@
       margin-top: 24px;
       justify-content: flex-end;
     }
+    .tab-container {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 20px;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      color: white;
+    }
 
     .footer {
       margin-top: 40px;
@@ -505,6 +527,7 @@
     </div>
     <div class="navbar-actions">
       <button class="btn" id="profileBtn" style="gap: 6px;"><i class="fas fa-user-circle"></i> <span id="profileDisplay">Loading...</span></button>
+      <button class="btn" id="shareBtn" style="gap: 6px;"><i class="fas fa-share-nodes"></i> Share</button>
       <button class="btn btn-primary" id="addBtn"><i class="fas fa-plus"></i> Add</button>
       <button class="theme-toggle" id="themeToggle"><i class="fas fa-moon"></i></button>
     </div>
@@ -572,24 +595,64 @@
 
 <!-- Profile Modal -->
 <div class="modal-overlay" id="profileModalOverlay">
-  <div class="modal glass" style="background: var(--surface-solid);">
-    <h3><i class="fas fa-user-shield"></i> Vault Profile</h3>
-    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
-      Enter your email address below to access your private vault. If you open WebVault with the same email on other devices, your websites will sync. Leaving this empty will lock websites to this specific device/browser using a local ID.
-    </p>
+  <div class="modal glass" style="background: var(--surface-solid); max-width: 480px;">
+    <h3><i class="fas fa-user-shield"></i> Vault Access & Settings</h3>
     
-    <label>Vault Email / ID</label>
-    <input type="text" id="profileEmail" placeholder="e.g. name@mail.com" style="margin-bottom: 12px;" />
-    
-    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-      <button class="btn" id="btnUseLocalDevice" style="font-size: 0.8rem; padding: 6px 12px; height: auto;">
-        <i class="fas fa-laptop"></i> Use Local Device Vault
-      </button>
+    <!-- Tab container -->
+    <div class="tab-container">
+      <button class="tab-btn active" id="tabPrivateVault">Private Vault</button>
+      <button class="tab-btn" id="tabSharedVault">Access Shared Vault</button>
+    </div>
+
+    <!-- Private Vault Tab Content -->
+    <div id="privateVaultContent">
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+        Enter your email to sync your vault across devices. If left empty, a unique local ID is used.
+      </p>
+      <label>Vault Email / ID</label>
+      <input type="text" id="profileEmail" placeholder="e.g. name@mail.com" style="margin-bottom: 12px;" />
+      
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <button class="btn" id="btnUseLocalDevice" style="font-size: 0.8rem; padding: 6px 12px; height: auto;">
+          <i class="fas fa-laptop"></i> Use Local Device Vault
+        </button>
+      </div>
+    </div>
+
+    <!-- Shared Vault Tab Content -->
+    <div id="sharedVaultContent" style="display: none;">
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+        Enter a vault share code to view and manage someone else's shared apps portfolio.
+      </p>
+      <label>Vault Share Code / ID</label>
+      <input type="text" id="accessShareCode" placeholder="Paste share code here" style="margin-bottom: 16px;" />
     </div>
 
     <div class="modal-actions">
       <button class="btn" id="profileModalCancel">Cancel</button>
       <button class="btn btn-primary" id="profileModalSave"><i class="fas fa-key"></i> Switch Vault</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div class="modal-overlay" id="shareModalOverlay">
+  <div class="modal glass" style="background: var(--surface-solid); max-width: 480px;">
+    <h3><i class="fas fa-share-nodes"></i> Share Vault</h3>
+    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+      Share this vault with others. Anyone with this code can view and edit the apps inside this vault.
+    </p>
+    
+    <label>Vault Share Code</label>
+    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+      <input type="text" id="shareCodeDisplay" readonly style="background: var(--bg); font-family: monospace; font-size: 1.05rem; text-align: center; letter-spacing: 0.5px; border: 1px solid var(--border);" />
+      <button class="btn btn-primary" id="btnCopyShareCode" style="padding: 10px 16px;">
+        <i class="fas fa-copy"></i> Copy
+      </button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" id="shareModalClose">Close</button>
     </div>
   </div>
 </div>
@@ -634,22 +697,61 @@
     const profileModalCancel = document.getElementById('profileModalCancel');
     const profileModalSave = document.getElementById('profileModalSave');
 
-    // ----- Local Storage Helpers -----
+    // Tab & Shared Vault DOM refs
+    const tabPrivateVault = document.getElementById('tabPrivateVault');
+    const tabSharedVault = document.getElementById('tabSharedVault');
+    const privateVaultContent = document.getElementById('privateVaultContent');
+    const sharedVaultContent = document.getElementById('sharedVaultContent');
+    const accessShareCode = document.getElementById('accessShareCode');
+
+    // Share Modal DOM refs
+    const shareBtn = document.getElementById('shareBtn');
+    const shareModalOverlay = document.getElementById('shareModalOverlay');
+    const shareCodeDisplay = document.getElementById('shareCodeDisplay');
+    const btnCopyShareCode = document.getElementById('btnCopyShareCode');
+    const shareModalClose = document.getElementById('shareModalClose');
+
+    // ----- Local Storage & Backend API Helpers -----
     function getStorageKey() {
       return `webvault_websites_${vaultId}`;
     }
 
     async function apiGet() {
       try {
-        const data = localStorage.getItem(getStorageKey());
-        return data ? JSON.parse(data) : [];
+        const res = await fetch(API_BASE, {
+          headers: { 'x-vault-id': vaultId }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem(getStorageKey(), JSON.stringify(data));
+          return data;
+        }
       } catch (e) {
-        console.error('Error reading from localStorage:', e);
-        return [];
+        console.warn('Backend offline, using localStorage fallback:', e);
       }
+      const data = localStorage.getItem(getStorageKey());
+      return data ? JSON.parse(data) : [];
     }
 
     async function apiCreate(payload) {
+      try {
+        const res = await fetch(API_BASE, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-vault-id': vaultId
+          },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          await apiGet(); // update cache
+          return saved;
+        }
+      } catch (e) {
+        console.warn('Backend offline, creating locally:', e);
+      }
+
       const list = await apiGet();
       const newSite = {
         _id: 'site_' + Math.random().toString(36).substring(2, 12),
@@ -669,6 +771,24 @@
     }
 
     async function apiUpdate(id, payload) {
+      try {
+        const res = await fetch(`${API_BASE}/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-vault-id': vaultId
+          },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          await apiGet(); // update cache
+          return updated;
+        }
+      } catch (e) {
+        console.warn('Backend offline, updating locally:', e);
+      }
+
       const list = await apiGet();
       const site = list.find(w => w._id === id);
       if (!site) throw new Error('Website not found');
@@ -681,6 +801,20 @@
     }
 
     async function apiToggleFav(id) {
+      try {
+        const res = await fetch(`${API_BASE}/${id}/fav`, {
+          method: 'PATCH',
+          headers: { 'x-vault-id': vaultId }
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          await apiGet(); // update cache
+          return updated;
+        }
+      } catch (e) {
+        console.warn('Backend offline, toggling fav locally:', e);
+      }
+
       const list = await apiGet();
       const site = list.find(w => w._id === id);
       if (!site) throw new Error('Website not found');
@@ -690,6 +824,20 @@
     }
 
     async function apiVisit(id) {
+      try {
+        const res = await fetch(`${API_BASE}/${id}/visit`, {
+          method: 'PATCH',
+          headers: { 'x-vault-id': vaultId }
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          await apiGet(); // update cache
+          return updated;
+        }
+      } catch (e) {
+        console.warn('Backend offline, visiting locally:', e);
+      }
+
       const list = await apiGet();
       const site = list.find(w => w._id === id);
       if (!site) throw new Error('Website not found');
@@ -701,6 +849,20 @@
     }
 
     async function apiDelete(id) {
+      try {
+        const res = await fetch(`${API_BASE}/${id}`, {
+          method: 'DELETE',
+          headers: { 'x-vault-id': vaultId }
+        });
+        if (res.ok) {
+          const deleted = await res.json();
+          await apiGet(); // update cache
+          return deleted;
+        }
+      } catch (e) {
+        console.warn('Backend offline, deleting locally:', e);
+      }
+
       let list = await apiGet();
       list = list.filter(w => w._id !== id);
       localStorage.setItem(getStorageKey(), JSON.stringify(list));
@@ -1082,10 +1244,36 @@
         });
       });
 
+      // Tab Switching Logic
+      let activeVaultTab = 'private'; // 'private' or 'shared'
+      
+      tabPrivateVault.addEventListener('click', () => {
+        tabPrivateVault.classList.add('active');
+        tabSharedVault.classList.remove('active');
+        privateVaultContent.style.display = 'block';
+        sharedVaultContent.style.display = 'none';
+        activeVaultTab = 'private';
+        profileEmail.focus();
+      });
+      
+      tabSharedVault.addEventListener('click', () => {
+        tabSharedVault.classList.add('active');
+        tabPrivateVault.classList.remove('active');
+        privateVaultContent.style.display = 'none';
+        sharedVaultContent.style.display = 'block';
+        activeVaultTab = 'shared';
+        accessShareCode.focus();
+      });
+
       // Vault profile listeners
       profileBtn.addEventListener('click', () => {
         const current = localStorage.getItem('webvault_vault_id') || '';
         profileEmail.value = current.startsWith('device-') ? '' : current;
+        accessShareCode.value = '';
+        
+        // Reset tab state
+        tabPrivateVault.click();
+        
         profileModalOverlay.classList.add('open');
         setTimeout(() => profileEmail.focus(), 50);
       });
@@ -1099,18 +1287,34 @@
       });
 
       profileModalSave.addEventListener('click', async () => {
-        const newEmail = profileEmail.value.trim();
-        if (!newEmail) {
-          alert('Please enter a valid email or click "Use Local Device Vault"');
-          return;
-        }
-        if (!newEmail.includes('@') || newEmail.length < 5) {
-          alert('Please enter a valid email address.');
-          return;
+        if (activeVaultTab === 'private') {
+          const newEmail = profileEmail.value.trim();
+          if (!newEmail) {
+            alert('Please enter a valid email or click "Use Local Device Vault"');
+            return;
+          }
+          if (!newEmail.includes('@') || newEmail.length < 5) {
+            alert('Please enter a valid email address.');
+            return;
+          }
+
+          localStorage.setItem('webvault_vault_id', newEmail);
+          vaultId = newEmail;
+        } else {
+          const code = accessShareCode.value.trim();
+          if (!code) {
+            alert('Please enter a valid vault share code.');
+            return;
+          }
+          if (code.length < 4) {
+            alert('The share code is too short. Please check it and try again.');
+            return;
+          }
+          
+          localStorage.setItem('webvault_vault_id', code);
+          vaultId = code;
         }
 
-        localStorage.setItem('webvault_vault_id', newEmail);
-        vaultId = newEmail;
         updateProfileDisplay();
         profileModalOverlay.classList.remove('open');
 
@@ -1136,6 +1340,44 @@
         await loadFromServer();
         render();
         renderCharts();
+      });
+
+      // Share Modal Listeners
+      shareBtn.addEventListener('click', () => {
+        shareCodeDisplay.value = vaultId;
+        shareModalOverlay.classList.add('open');
+      });
+
+      shareModalClose.addEventListener('click', () => {
+        shareModalOverlay.classList.remove('open');
+      });
+
+      shareModalOverlay.addEventListener('click', (e) => {
+        if (e.target === shareModalOverlay) shareModalOverlay.classList.remove('open');
+      });
+
+      btnCopyShareCode.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(shareCodeDisplay.value);
+          const icon = btnCopyShareCode.querySelector('i');
+          const originalText = btnCopyShareCode.innerHTML;
+          btnCopyShareCode.innerHTML = '<i class="fas fa-check"></i> Copied!';
+          btnCopyShareCode.classList.remove('btn-primary');
+          btnCopyShareCode.style.background = 'var(--green)';
+          btnCopyShareCode.style.color = 'white';
+          btnCopyShareCode.style.borderColor = 'var(--green)';
+          
+          setTimeout(() => {
+            btnCopyShareCode.innerHTML = originalText;
+            btnCopyShareCode.classList.add('btn-primary');
+            btnCopyShareCode.style.background = '';
+            btnCopyShareCode.style.color = '';
+            btnCopyShareCode.style.borderColor = '';
+          }, 1500);
+        } catch (err) {
+          console.error('Failed to copy text: ', err);
+          alert('Could not copy automatically. Please select the code and copy manually.');
+        }
       });
 
       // initial charts

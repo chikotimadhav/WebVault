@@ -131,6 +131,49 @@ router.patch('/:id/visit', async (req, res) => {
     }
 });
 
+// PUT /api/websites/vault/rename -> Rename vault ID (restricted to creator)
+router.put('/vault/rename', async (req, res) => {
+    try {
+        const { newVaultId } = req.body;
+        if (!newVaultId || !newVaultId.trim()) {
+            return res.status(400).json({ error: 'New Vault ID is required' });
+        }
+        const cleanedNewId = newVaultId.trim();
+
+        if (cleanedNewId === req.vaultId) {
+            return res.status(400).json({ error: 'New Vault ID must be different from current Vault ID' });
+        }
+
+        // Verify that the vault exists and caller is the creator
+        const vault = await Vault.findOne({ vaultId: req.vaultId });
+        if (!vault) {
+            return res.status(404).json({ error: 'Vault not found' });
+        }
+        if (vault.creatorToken !== req.creatorToken) {
+            return res.status(403).json({ error: 'Only the creator of this vault can rename it.' });
+        }
+
+        // Check if the new vault ID already exists
+        const destinationExists = await Vault.findOne({ vaultId: cleanedNewId });
+        if (destinationExists) {
+            return res.status(400).json({ error: 'The destination Vault ID is already in use.' });
+        }
+
+        const Message = require('../models/Message');
+        const Presence = require('../models/Presence');
+
+        // Rename across all collections
+        await Vault.updateOne({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });
+        await Website.updateMany({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });
+        await Message.updateMany({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });
+        await Presence.updateMany({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });
+
+        res.json({ success: true, newVaultId: cleanedNewId });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to rename vault.' });
+    }
+});
+
 // DELETE /api/websites/purge/all -> delete entire vault and all associated apps, messages, presences (restricted to creator)
 router.delete('/purge/all', async (req, res) => {
     try {

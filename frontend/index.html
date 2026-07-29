@@ -1067,6 +1067,12 @@
         <button class="btn" id="btnAdminDeleteVault" style="background: var(--danger); color: white; width: 100%; justify-content: center; gap: 6px; padding: 10px 14px;">
           <i class="fas fa-trash-alt"></i> Delete Entire Vault & All Data
         </button>
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
+          <input type="text" id="txtAdminRenameVault" placeholder="Enter new Vault ID / Email" style="flex: 1; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;" />
+          <button class="btn btn-primary" id="btnAdminRenameVault" style="padding: 8px 12px; font-size: 0.85rem; gap: 4px; border-radius: 12px;">
+            <i class="fas fa-edit"></i> Rename
+          </button>
+        </div>
       </div>
     </div>
 
@@ -2238,6 +2244,78 @@
           } else {
             const err = await res.json().catch(() => ({}));
             alert(err.error || 'Failed to delete vault.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      });
+
+      // Admin Creator Rename Vault Listener
+      const btnAdminRenameVault = document.getElementById('btnAdminRenameVault');
+      const txtAdminRenameVault = document.getElementById('txtAdminRenameVault');
+
+      btnAdminRenameVault.addEventListener('click', async () => {
+        const newId = txtAdminRenameVault.value.trim();
+        if (!newId) {
+          alert('Please enter a new Vault ID');
+          return;
+        }
+        if (newId === vaultId) {
+          alert('New Vault ID must be different from current Vault ID');
+          return;
+        }
+        if (newId.includes('@') && newId.length < 5) {
+          alert('Please enter a valid email address');
+          return;
+        }
+
+        if (!confirm(`Are you sure you want to rename this vault ID from "${vaultId}" to "${newId}"? This will update all saved apps and chats, and anyone accessing this vault will need to use the new ID.`)) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/vault/rename`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-vault-id': vaultId,
+              'x-creator-token': getCreatorToken()
+            },
+            body: JSON.stringify({ newVaultId: newId })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            alert(`Vault renamed successfully to "${data.newVaultId}"`);
+            
+            // Transfer creator token to new ID
+            const oldToken = localStorage.getItem(`webvault_creator_token_${vaultId}`);
+            if (oldToken) {
+              localStorage.setItem(`webvault_creator_token_${data.newVaultId}`, oldToken);
+              localStorage.removeItem(`webvault_creator_token_${vaultId}`);
+            }
+            
+            // Clear old cache
+            localStorage.removeItem(`webvault_websites_${vaultId}`);
+            
+            // Update active vault ID
+            localStorage.setItem('webvault_vault_id', data.newVaultId);
+            vaultId = data.newVaultId;
+            
+            txtAdminRenameVault.value = '';
+            updateProfileDisplay();
+            profileModalOverlay.classList.remove('open');
+            onVaultChange();
+            
+            // reload data
+            websites = [];
+            grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
+            await loadFromServer();
+            render();
+            renderCharts();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || 'Failed to rename vault.');
           }
         } catch (e) {
           alert('Error: ' + e.message);

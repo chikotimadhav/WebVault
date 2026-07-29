@@ -514,6 +514,126 @@
         grid-template-columns: repeat(2, 1fr);
       }
     }
+
+    /* Website Stopped / Maintenance Screen */
+    .website-stopped-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at center, #1b1b2f 0%, #0d0d15 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 999999;
+      color: #ffffff;
+      font-family: 'Inter', sans-serif;
+      padding: 24px;
+      overflow: hidden;
+    }
+
+    .website-stopped-card {
+      background: rgba(30, 30, 50, 0.4);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 32px;
+      padding: 48px 40px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4), 
+                  inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      animation: cardFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      position: relative;
+    }
+
+    .website-stopped-card::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      right: -2px;
+      bottom: -2px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.4), rgba(236, 72, 153, 0.1), rgba(108, 92, 231, 0.4));
+      border-radius: 34px;
+      z-index: -1;
+      opacity: 0.5;
+    }
+
+    .website-stopped-icon-wrapper {
+      width: 80px;
+      height: 80px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 28px;
+      font-size: 2.2rem;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+      animation: pulseIcon 2s infinite ease-in-out;
+    }
+
+    .website-stopped-card h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #ffffff 0%, #ececf0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .website-stopped-card p {
+      color: #b0b0c8;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+
+    .website-stopped-details {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 16px;
+      padding: 16px;
+      font-size: 0.85rem;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: #8f8f9e;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .website-stopped-code {
+      font-family: monospace;
+      color: #ef4444;
+      font-weight: 600;
+    }
+
+    @keyframes cardFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes pulseIcon {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+      }
+      50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
+      }
+    }
   </style>
 </head>
 <body>
@@ -1207,8 +1327,30 @@
       }
     }
 
+    // Toggle to stop the website and show an error (set to false to run normal operations)
+    const IS_WEBSITE_STOPPED = true;
+
     // ----- init -----
     async function init() {
+      if (IS_WEBSITE_STOPPED) {
+        document.body.innerHTML = `
+          <div class="website-stopped-container">
+            <div class="website-stopped-card">
+              <div class="website-stopped-icon-wrapper">
+                <i class="fas fa-ban"></i>
+              </div>
+              <h1>Service Suspended</h1>
+              <p>This website has been temporarily stopped by the owner. It will remain offline until reactivated.</p>
+              <div class="website-stopped-details">
+                <div>Status: <span class="website-stopped-code">OFFLINE</span></div>
+                <div style="font-size: 0.75rem; margin-top: 4px;">Error Code: HTTP_503_SERVICE_UNAVAILABLE</div>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
       // Initialize Vault ID
       vaultId = getOrCreateVaultId();
       updateProfileDisplay();

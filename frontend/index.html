@@ -515,24 +515,6 @@
       }
     }
 
-    /* Auto-refresh pulsing dot */
-    @keyframes pulse-green {
-      0% {
-        transform: scale(0.9);
-        box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.7);
-      }
-      70% {
-        transform: scale(1.1);
-        box-shadow: 0 0 0 8px rgba(0, 184, 148, 0);
-      }
-      100% {
-        transform: scale(0.9);
-        box-shadow: 0 0 0 0 rgba(0, 184, 148, 0);
-      }
-    }
-    .pulse-green {
-      animation: pulse-green 2.0s infinite;
-    }
 
     /* Locked delete button styling */
     .btn-delete.locked {
@@ -695,11 +677,6 @@
     <span class="stat-item"><i class="fas fa-calendar-week"></i> This Week: <span id="weekCount">0</span></span>
     <span class="stat-divider"></span>
     <span class="stat-item"><i class="fas fa-calendar-alt"></i> This Month: <span id="monthCount">0</span></span>
-    <span class="stat-divider"></span>
-    <span class="stat-item" style="opacity: 0.85; font-size: 0.8rem; margin-left: auto; display: flex; align-items: center; gap: 6px;">
-      <span class="refresh-indicator-dot pulse-green" id="refreshDot" style="width: 8px; height: 8px; background: var(--green); border-radius: 50%; display: inline-block;"></span>
-      Auto-refreshing
-    </span>
   </div>
 
   <!-- Chart Row -->
@@ -1628,22 +1605,8 @@
           !profileModalOverlay.classList.contains('open') &&
           !shareModalOverlay.classList.contains('open')
         ) {
-          const dot = document.getElementById('refreshDot');
-          if (dot) {
-            // Flash dot rapidly to indicate active sync
-            dot.style.transform = 'scale(1.3)';
-            dot.style.background = 'var(--accent)';
-          }
-          
           await loadFromServer();
           render();
-          
-          if (dot) {
-            setTimeout(() => {
-              dot.style.transform = '';
-              dot.style.background = 'var(--green)';
-            }, 600);
-          }
         }
       }, 10000);
     }

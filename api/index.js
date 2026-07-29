@@ -4,14 +4,11 @@ const app = require('../backend/app');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/webvault';
 
-let isConnected = false;
-
 const connectDb = async () => {
-    if (isConnected) return;
+    if (mongoose.connection.readyState === 1) return;
     try {
         // Use connection options suitable for Serverless environments
         await mongoose.connect(MONGO_URI);
-        isConnected = true;
         console.log('Connected to MongoDB Atlas');
         
         // Run migration for legacy data

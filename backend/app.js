@@ -32,6 +32,29 @@ app.use((req, res, next) => {
     next();
 });
 
+// Vault rename redirection middleware
+app.use(async (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+        const vaultId = req.headers['x-vault-id'];
+        if (vaultId) {
+            try {
+                const Vault = require('./models/Vault');
+                const vault = await Vault.findOne({ vaultId: vaultId.trim() });
+                if (vault && vault.renamedTo) {
+                    return res.status(409).json({
+                        error: 'Vault renamed',
+                        code: 'VAULT_RENAMED',
+                        renamedTo: vault.renamedTo
+                    });
+                }
+            } catch (err) {
+                console.error('Error checking vault rename status:', err);
+            }
+        }
+    }
+    next();
+});
+
 app.use('/api/websites', websiteRoutes);
 app.use('/api/messages', messageRoutes);
 

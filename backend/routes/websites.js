@@ -211,7 +211,18 @@ router.put('/vault/rename', async (req, res) => {
         const Presence = require('../models/Presence');
 
         // Rename across all collections
-        await Vault.updateOne({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });
+        // 1. Create the new vault record
+        const newVault = new Vault({
+            vaultId: cleanedNewId,
+            creatorToken: vault.creatorToken,
+            creatorPin: vault.creatorPin
+        });
+        await newVault.save();
+
+        // 2. Mark the old vault as renamed
+        await Vault.updateOne({ vaultId: req.vaultId }, { $set: { renamedTo: cleanedNewId } });
+
+        // 3. Cascade update websites, messages, and presences
         await Website.updateMany({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });
         await Message.updateMany({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });
         await Presence.updateMany({ vaultId: req.vaultId }, { $set: { vaultId: cleanedNewId } });

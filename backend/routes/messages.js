@@ -68,4 +68,21 @@ router.post('/', async (req, res) => {
     }
 });
 
+// DELETE /api/messages -> clear chat history for vaultId (restricted to creator)
+router.delete('/', async (req, res) => {
+    try {
+        const creatorToken = req.headers['x-creator-token'] || '';
+        const Vault = require('../models/Vault');
+        const vault = await Vault.findOne({ vaultId: req.vaultId });
+        if (vault && vault.creatorToken !== creatorToken) {
+            return res.status(403).json({ error: 'Only the creator of this vault can clear the chat history.' });
+        }
+
+        const result = await Message.deleteMany({ vaultId: req.vaultId });
+        res.json({ success: true, deletedCount: result.deletedCount });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to clear chat history.' });
+    }
+});
+
 module.exports = router;

@@ -131,6 +131,37 @@ router.patch('/:id/visit', async (req, res) => {
     }
 });
 
+// DELETE /api/websites/purge/all -> delete entire vault and all associated apps, messages, presences (restricted to creator)
+router.delete('/purge/all', async (req, res) => {
+    try {
+        const vault = await Vault.findOne({ vaultId: req.vaultId });
+        if (!vault) {
+            return res.status(404).json({ error: 'Vault not found' });
+        }
+        if (vault.creatorToken !== req.creatorToken) {
+            return res.status(403).json({ error: 'Only the creator of this vault can delete it.' });
+        }
+
+        const Message = require('../models/Message');
+        const Presence = require('../models/Presence');
+
+        // Delete everything
+        await Vault.deleteOne({ vaultId: req.vaultId });
+        const websitesDel = await Website.deleteMany({ vaultId: req.vaultId });
+        const messagesDel = await Message.deleteMany({ vaultId: req.vaultId });
+        const presencesDel = await Presence.deleteMany({ vaultId: req.vaultId });
+
+        res.json({
+            success: true,
+            websitesDeleted: websitesDel.deletedCount,
+            messagesDeleted: messagesDel.deletedCount,
+            presencesDeleted: presencesDel.deletedCount
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to delete vault and all associated data.' });
+    }
+});
+
 // DELETE /api/websites/:id -> remove in specific vaultId (restricted to creator)
 router.delete('/:id', async (req, res) => {
     try {

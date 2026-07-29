@@ -1057,6 +1057,19 @@
       <input type="text" id="accessShareCode" placeholder="Paste share code here" style="margin-bottom: 16px;" />
     </div>
 
+    <!-- Admin Controls Section -->
+    <div id="adminControlsSection" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); display: none;">
+      <h4 style="margin-bottom: 12px; font-size: 0.9rem; color: var(--danger); font-weight: 600; display: flex; align-items: center; gap: 6px;"><i class="fas fa-user-shield"></i> Vault Creator Controls</h4>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="btn" id="btnAdminClearChat" style="background: rgba(225, 112, 85, 0.1); color: var(--danger); border-color: rgba(225, 112, 85, 0.2); width: 100%; justify-content: center; gap: 6px; padding: 10px 14px;">
+          <i class="fas fa-eraser"></i> Clear Vault Chat History
+        </button>
+        <button class="btn" id="btnAdminDeleteVault" style="background: var(--danger); color: white; width: 100%; justify-content: center; gap: 6px; padding: 10px 14px;">
+          <i class="fas fa-trash-alt"></i> Delete Entire Vault & All Data
+        </button>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn" id="profileModalCancel">Cancel</button>
       <button class="btn btn-primary" id="profileModalSave"><i class="fas fa-key"></i> Switch Vault</button>
@@ -1905,6 +1918,13 @@
         profileDisplay.textContent = id;
         profileBtn.title = `Using Vault: ${id}`;
       }
+
+      // Show/hide admin control section if user is creator
+      const adminSection = document.getElementById('adminControlsSection');
+      if (adminSection) {
+        const isCreator = !!localStorage.getItem('webvault_creator_token_' + id);
+        adminSection.style.display = isCreator ? 'block' : 'none';
+      }
     }
 
     // Toggle to stop the website and show an error (set to false to run normal operations)
@@ -2144,6 +2164,84 @@
       chatSendBtn.addEventListener('click', sendChatMessage);
       chatMessageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') sendChatMessage();
+      });
+
+      // Admin Creator Controls Event Listeners
+      const btnAdminClearChat = document.getElementById('btnAdminClearChat');
+      const btnAdminDeleteVault = document.getElementById('btnAdminDeleteVault');
+
+      btnAdminClearChat.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to permanently delete all chat messages in this vault? This action cannot be undone.')) {
+          return;
+        }
+        try {
+          const res = await fetch(CHAT_API_BASE, {
+            method: 'DELETE',
+            headers: {
+              'x-vault-id': vaultId,
+              'x-creator-token': getCreatorToken()
+            }
+          });
+          if (res.ok) {
+            alert('Vault chat history has been cleared successfully.');
+            chatMessages = [];
+            renderChatMessages();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || 'Failed to clear chat.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      });
+
+      btnAdminDeleteVault.addEventListener('click', async () => {
+        const confirmCode = prompt(`WARNING: This will permanently delete this vault, all registered apps, chat messages, and presences.\n\nTo confirm deletion, please type the vault ID "${vaultId}" below:`);
+        if (confirmCode !== vaultId) {
+          if (confirmCode !== null) alert('Vault ID confirmation mismatch. Deletion cancelled.');
+          return;
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/purge/all`, {
+            method: 'DELETE',
+            headers: {
+              'x-vault-id': vaultId,
+              'x-creator-token': getCreatorToken()
+            }
+          });
+          if (res.ok) {
+            alert('Vault and all associated data have been permanently deleted.');
+            
+            // Clear creator token and local storage keys for this vault
+            localStorage.removeItem(`webvault_creator_token_${vaultId}`);
+            localStorage.removeItem(`webvault_websites_${vaultId}`);
+            
+            // Switch to a new local device vault
+            const rand = Math.random().toString(36).substring(2, 10);
+            const newId = `device-${rand}`;
+            localStorage.setItem('webvault_vault_id', newId);
+            const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem(`webvault_creator_token_${newId}`, token);
+            
+            vaultId = newId;
+            updateProfileDisplay();
+            profileModalOverlay.classList.remove('open');
+            onVaultChange();
+            
+            // reload data
+            websites = [];
+            grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
+            await loadFromServer();
+            render();
+            renderCharts();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || 'Failed to delete vault.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
       });
 
       // initial charts

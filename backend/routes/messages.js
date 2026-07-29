@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
+const Presence = require('../models/Presence');
 
 // Middleware to extract x-vault-id header for all message API operations
 router.use((req, res, next) => {
@@ -9,13 +10,34 @@ router.use((req, res, next) => {
     next();
 });
 
-// GET /api/messages -> list messages for specific vaultId
+// GET /api/messages -> list messages and online users for specific vaultId
 router.get('/', async (req, res) => {
     try {
+        const username = req.query.username;
+        if (username && username.trim()) {
+            const name = username.trim();
+            // Update/upsert presence for the user
+            await Presence.findOneAndUpdate(
+                { vaultId: req.vaultId, username: name },
+                { lastActive: new Date() },
+                { upsert: true, new: true }
+            );
+        }
+
+        // Fetch messages
         const messages = await Message.find({ vaultId: req.vaultId })
             .sort({ timestamp: 1 })
             .limit(100);
-        res.json(messages);
+
+        // Fetch online users (last active in the last 15 seconds)
+        const threshold = new Date(Date.now() - 15000);
+        const activePresences = await Presence.find({
+            vaultId: req.vaultId,
+            lastActive: { $gt: threshold }
+        });
+        const onlineUsers = activePresences.map(p => p.username);
+
+        res.json({ messages, onlineUsers });
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch messages' });
     }

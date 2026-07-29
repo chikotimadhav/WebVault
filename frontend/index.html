@@ -648,6 +648,53 @@
       }
     }
 
+    /* Central background watermark icon */
+    .bg-watermark {
+      position: fixed;
+      top: 55%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20rem;
+      color: var(--text);
+      opacity: 0.03;
+      pointer-events: none;
+      z-index: -1;
+      animation: floatWatermark 8s ease-in-out infinite;
+    }
+    .dark .bg-watermark {
+      opacity: 0.015;
+    }
+    @keyframes floatWatermark {
+      0%, 100% {
+        transform: translate(-50%, -55%);
+      }
+      50% {
+        transform: translate(-50%, -45%);
+      }
+    }
+
+    /* Online list bar inside active chat screen */
+    .chat-online-bar {
+      display: none;
+      padding: 8px 16px;
+      background: var(--surface);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .chat-online-bar::-webkit-scrollbar {
+      height: 3px;
+    }
+    .chat-online-bar::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
     /* Vault Chat Styles */
     .chat-toggle-btn {
       position: fixed;
@@ -895,6 +942,9 @@
   </style>
 </head>
 <body>
+<!-- Central decorative background watermark -->
+<div class="bg-watermark"><i class="fas fa-cubes"></i></div>
+
 <div class="app" id="app">
   <!-- Navbar -->
   <nav class="navbar glass">
@@ -1051,6 +1101,13 @@
     <button class="chat-close-btn" id="chatCloseBtn">&times;</button>
   </div>
   <div class="chat-body">
+    <!-- Online users presence list -->
+    <div class="chat-online-bar" id="chatOnlineBar">
+      <span class="chat-status-dot" style="background: var(--green); width: 6px; height: 6px;"></span>
+      <span style="font-weight: 500;">Online:</span>
+      <span id="chatOnlineUsersList">-</span>
+    </div>
+
     <!-- Screen 1: Ask for name -->
     <div class="chat-screen" id="chatNameScreen">
       <p class="chat-intro-text">Welcome to Vault Chat! Enter your name to start chatting with others in this vault.</p>
@@ -1148,6 +1205,8 @@
     const chatMessagesDiv = document.getElementById('chatMessages');
     const chatMessageInput = document.getElementById('chatMessageInput');
     const chatSendBtn = document.getElementById('chatSendBtn');
+    const chatOnlineBar = document.getElementById('chatOnlineBar');
+    const chatOnlineUsersList = document.getElementById('chatOnlineUsersList');
 
     // ----- Local Storage & Backend API Helpers -----
     function getStorageKey() {
@@ -1349,7 +1408,10 @@
     // ----- Chat Helpers & API -----
     async function apiGetMessages() {
       try {
-        const res = await fetch(CHAT_API_BASE, {
+        const url = chatUsername 
+          ? `${CHAT_API_BASE}?username=${encodeURIComponent(chatUsername)}` 
+          : CHAT_API_BASE;
+        const res = await fetch(url, {
           headers: {
             'x-vault-id': vaultId
           }
@@ -1360,7 +1422,7 @@
       } catch (err) {
         console.warn('Backend offline, cannot load chat messages:', err);
       }
-      return [];
+      return { messages: [], onlineUsers: [] };
     }
 
     async function apiSendMessage(text) {
@@ -1420,9 +1482,12 @@
     async function loadChatMessages() {
       if (!chatUsername) return;
       try {
-        const msgs = await apiGetMessages();
-        chatMessages = msgs;
+        const response = await apiGetMessages();
+        chatMessages = response.messages || [];
+        const onlineUsers = response.onlineUsers || [];
+        
         renderChatMessages();
+        renderOnlineUsers(onlineUsers);
         
         if (!chatOpen && chatMessages.length > lastSeenMessageCount) {
           chatBadge.style.display = 'block';
@@ -1432,6 +1497,22 @@
         }
       } catch (err) {
         console.error('Chat error:', err);
+      }
+    }
+
+    function renderOnlineUsers(users) {
+      if (!chatOpen || !chatUsername) {
+        chatOnlineBar.style.display = 'none';
+        return;
+      }
+      if (users && users.length > 0) {
+        chatOnlineBar.style.display = 'flex';
+        const displayList = users.map(u => 
+          u.toLowerCase() === chatUsername.toLowerCase() ? `<strong>${escapeHtml(u)} (you)</strong>` : escapeHtml(u)
+        ).join(', ');
+        chatOnlineUsersList.innerHTML = displayList;
+      } else {
+        chatOnlineBar.style.display = 'none';
       }
     }
 
@@ -1470,6 +1551,8 @@
       chatMessages = [];
       lastSeenMessageCount = 0;
       chatBadge.style.display = 'none';
+      chatOnlineBar.style.display = 'none';
+      chatOnlineUsersList.innerHTML = '-';
       if (chatOpen) {
         chatMessagesDiv.innerHTML = '';
         showChatScreen();
@@ -1589,7 +1672,7 @@
       });
 
       if (filtered.length === 0) {
-        grid.innerHTML = `<div class="empty-state"><i class="fas fa-inbox" style="font-size:2.4rem;opacity:0.3;"></i><p style="margin-top:12px;">No apps found</p></div>`;
+        grid.innerHTML = `<div class="empty-state"><i class="fas fa-cubes" style="font-size:2.4rem;opacity:0.3;"></i><p style="margin-top:12px;">No apps found</p></div>`;
       } else {
         grid.innerHTML = filtered.map(w => {
           const favicon = getFavicon(w.url);

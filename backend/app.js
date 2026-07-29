@@ -35,30 +35,7 @@ app.use((req, res, next) => {
 app.use('/api/websites', websiteRoutes);
 app.use('/api/messages', messageRoutes);
 
-app.delete('/api/purge-madhav-vault', async (req, res) => {
-    try {
-        const target = 'madhavchikoti@gmail.com';
-        const Message = require('./models/Message');
-        const Presence = require('./models/Presence');
-        const Vault = require('./models/Vault');
-        const Website = require('./models/Website');
-        
-        const vaultRes = await Vault.deleteOne({ vaultId: target });
-        const websiteRes = await Website.deleteMany({ vaultId: target });
-        const messageRes = await Message.deleteMany({ vaultId: target });
-        const presenceRes = await Presence.deleteMany({ vaultId: target });
-        
-        res.json({
-            success: true,
-            vaultsDeleted: vaultRes.deletedCount,
-            websitesDeleted: websiteRes.deletedCount,
-            messagesDeleted: messageRes.deletedCount,
-            presencesDeleted: presenceRes.deletedCount
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+
 
 app.get('/', (req, res) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';

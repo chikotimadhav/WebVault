@@ -11,7 +11,8 @@ async function ensureVaultRegistered(vaultId, creatorToken) {
         if (!vault) {
             vault = new Vault({
                 vaultId,
-                creatorToken: creatorToken || 'legacy-guest-token'
+                creatorToken: creatorToken || 'legacy-guest-token',
+                creatorPin: '000000'
             });
             await vault.save();
         }
@@ -19,6 +20,49 @@ async function ensureVaultRegistered(vaultId, creatorToken) {
         console.error('Error ensuring vault is registered:', err);
     }
 }
+
+// GET /api/websites/vault/check -> check if vault exists (before middleware)
+router.get('/vault/check', async (req, res) => {
+    try {
+        const { vaultId } = req.query;
+        if (!vaultId) {
+            return res.status(400).json({ error: 'Vault ID parameter is required' });
+        }
+        const vault = await Vault.findOne({ vaultId: vaultId.trim() });
+        res.json({ exists: !!vault });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/websites/vault/create -> create new vault with pin (before middleware)
+router.post('/vault/create', async (req, res) => {
+    try {
+        const { vaultId, creatorToken, creatorPin } = req.body;
+        if (!vaultId || !creatorPin) {
+            return res.status(400).json({ error: 'Vault ID and 6-digit PIN are required.' });
+        }
+        const cleanedPin = creatorPin.toString().trim();
+        if (cleanedPin.length !== 6 || isNaN(cleanedPin)) {
+            return res.status(400).json({ error: 'PIN must be exactly 6 digits.' });
+        }
+
+        let vault = await Vault.findOne({ vaultId: vaultId.trim() });
+        if (vault) {
+            return res.status(400).json({ error: 'Vault ID already exists.' });
+        }
+
+        vault = new Vault({
+            vaultId: vaultId.trim(),
+            creatorToken: creatorToken || 'legacy-guest-token',
+            creatorPin: cleanedPin
+        });
+        await vault.save();
+        res.status(201).json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Middleware to extract x-vault-id header for all website API operations (with fallback for legacy clients)
 router.use(async (req, res, next) => {
@@ -134,6 +178,7 @@ router.patch('/:id/visit', async (req, res) => {
 // PUT /api/websites/vault/rename -> Rename vault ID (restricted to creator)
 router.put('/vault/rename', async (req, res) => {
     try {
+        const creatorPin = req.headers['x-creator-pin'] || '';
         const { newVaultId } = req.body;
         if (!newVaultId || !newVaultId.trim()) {
             return res.status(400).json({ error: 'New Vault ID is required' });
@@ -151,6 +196,9 @@ router.put('/vault/rename', async (req, res) => {
         }
         if (vault.creatorToken !== req.creatorToken) {
             return res.status(403).json({ error: 'Only the creator of this vault can rename it.' });
+        }
+        if (vault.creatorPin && vault.creatorPin !== creatorPin) {
+            return res.status(403).json({ error: 'Invalid 6-digit Creator PIN.' });
         }
 
         // Check if the new vault ID already exists
@@ -177,12 +225,16 @@ router.put('/vault/rename', async (req, res) => {
 // DELETE /api/websites/purge/all -> delete entire vault and all associated apps, messages, presences (restricted to creator)
 router.delete('/purge/all', async (req, res) => {
     try {
+        const creatorPin = req.headers['x-creator-pin'] || '';
         const vault = await Vault.findOne({ vaultId: req.vaultId });
         if (!vault) {
             return res.status(404).json({ error: 'Vault not found' });
         }
         if (vault.creatorToken !== req.creatorToken) {
             return res.status(403).json({ error: 'Only the creator of this vault can delete it.' });
+        }
+        if (vault.creatorPin && vault.creatorPin !== creatorPin) {
+            return res.status(403).json({ error: 'Invalid 6-digit Creator PIN.' });
         }
 
         const Message = require('../models/Message');

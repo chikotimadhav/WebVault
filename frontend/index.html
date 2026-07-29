@@ -1237,6 +1237,32 @@
       return localStorage.getItem(`webvault_creator_token_${vaultId}`) || '';
     }
 
+    async function apiCheckVaultExists(id) {
+      try {
+        const res = await fetch(`${API_BASE}/vault/check?vaultId=${encodeURIComponent(id)}`);
+        if (res.ok) {
+          const data = await res.json();
+          return data.exists;
+        }
+      } catch (e) {
+        console.warn('Backend check offline, assuming vault exists:', e);
+      }
+      return true; // fallback
+    }
+
+    async function apiCreateVault(id, token, pin) {
+      const res = await fetch(`${API_BASE}/vault/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vaultId: id, creatorToken: token, creatorPin: pin })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create vault');
+      }
+      return res.json();
+    }
+
     async function apiGet() {
       try {
         const res = await fetch(API_BASE, {
@@ -1489,6 +1515,28 @@
       const text = chatMessageInput.value.trim();
       if (!text) return;
       chatMessageInput.value = '';
+
+      if (text === "change the name") {
+        const newName = prompt('Enter your new name:');
+        if (newName === null || !newName.trim()) return;
+        const cleanedNewName = newName.trim();
+        const oldName = chatUsername;
+
+        chatUsername = cleanedNewName;
+        localStorage.setItem('webvault_chat_username', cleanedNewName);
+
+        try {
+          const systemMsgText = `[SYSTEM_NAME_CHANGE] ${oldName} changes name to ${cleanedNewName}`;
+          const saved = await apiSendMessage(systemMsgText);
+          chatMessages.push(saved);
+          lastSeenMessageCount = chatMessages.length;
+          renderChatMessages();
+        } catch (err) {
+          alert(err.message);
+        }
+        return;
+      }
+
       try {
         const saved = await apiSendMessage(text);
         chatMessages.push(saved);
@@ -1538,6 +1586,15 @@
 
     function renderChatMessages() {
       chatMessagesDiv.innerHTML = chatMessages.map(msg => {
+        if (msg.text.startsWith('[SYSTEM_NAME_CHANGE]')) {
+          const changeText = msg.text.replace('[SYSTEM_NAME_CHANGE] ', '');
+          return `
+            <div style="text-align: center; font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin: 8px 0; width: 100%;">
+              <i class="fas fa-user-edit" style="margin-right: 4px;"></i> ${escapeHtml(changeText)}
+            </div>
+          `;
+        }
+
         const isSelf = msg.sender.toLowerCase() === chatUsername.toLowerCase();
         const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         return `
@@ -2035,7 +2092,10 @@
       });
 
       profileModalSave.addEventListener('click', async () => {
-        if (activeVaultTab === 'private') {
+        let targetId = '';
+        let isPrivate = activeVaultTab === 'private';
+        
+        if (isPrivate) {
           const newEmail = profileEmail.value.trim();
           if (!newEmail) {
             alert('Please enter a valid email or click "Use Local Device Vault"');
@@ -2045,15 +2105,7 @@
             alert('Please enter a valid email address.');
             return;
           }
-
-          localStorage.setItem('webvault_vault_id', newEmail);
-          vaultId = newEmail;
-
-          // Generate a creator token for this email if it doesn't already exist on this device
-          if (!localStorage.getItem(`webvault_creator_token_${newEmail}`)) {
-            const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            localStorage.setItem(`webvault_creator_token_${newEmail}`, token);
-          }
+          targetId = newEmail;
         } else {
           const code = accessShareCode.value.trim();
           if (!code) {
@@ -2064,11 +2116,39 @@
             alert('The share code is too short. Please check it and try again.');
             return;
           }
-          
-          localStorage.setItem('webvault_vault_id', code);
-          vaultId = code;
-          // Notice we DO NOT generate a creator token here, since they are accessing a shared vault!
+          targetId = code;
         }
+
+        // Check if vault exists on the server
+        try {
+          const exists = await apiCheckVaultExists(targetId);
+          if (!exists) {
+            const pin = prompt(`The vault "${targetId}" does not exist yet. Please enter a 6-digit PIN to secure it as the creator:`);
+            if (pin === null) return; // User cancelled
+            const cleanedPin = pin.trim();
+            if (cleanedPin.length !== 6 || isNaN(cleanedPin)) {
+              alert('PIN must be exactly 6 digits.');
+              return;
+            }
+
+            const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            await apiCreateVault(targetId, token, cleanedPin);
+            localStorage.setItem(`webvault_creator_token_${targetId}`, token);
+          } else {
+            // Generate a creator token for this email if it doesn't already exist on this device
+            // (Only for private vaults that already exist, in case they are restoring their own vault)
+            if (isPrivate && !localStorage.getItem(`webvault_creator_token_${targetId}`)) {
+              const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+              localStorage.setItem(`webvault_creator_token_${targetId}`, token);
+            }
+          }
+        } catch (e) {
+          alert('Vault Registration Error: ' + e.message);
+          return;
+        }
+
+        localStorage.setItem('webvault_vault_id', targetId);
+        vaultId = targetId;
 
         updateProfileDisplay();
         profileModalOverlay.classList.remove('open');
@@ -2085,12 +2165,25 @@
       btnUseLocalDevice.addEventListener('click', async () => {
         const rand = Math.random().toString(36).substring(2, 10);
         const newId = `device-${rand}`;
-        localStorage.setItem('webvault_vault_id', newId);
+        
+        const pin = prompt(`Please enter a 6-digit PIN to secure this new device vault:`);
+        if (pin === null) return; // User cancelled
+        const cleanedPin = pin.trim();
+        if (cleanedPin.length !== 6 || isNaN(cleanedPin)) {
+          alert('PIN must be exactly 6 digits.');
+          return;
+        }
 
-        // Generate creator token for this new local ID
         const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-        localStorage.setItem(`webvault_creator_token_${newId}`, token);
+        try {
+          await apiCreateVault(newId, token, cleanedPin);
+          localStorage.setItem(`webvault_creator_token_${newId}`, token);
+        } catch (e) {
+          alert('Vault Registration Error: ' + e.message);
+          return;
+        }
 
+        localStorage.setItem('webvault_vault_id', newId);
         vaultId = newId;
         updateProfileDisplay();
         profileModalOverlay.classList.remove('open');
@@ -2180,12 +2273,21 @@
         if (!confirm('Are you sure you want to permanently delete all chat messages in this vault? This action cannot be undone.')) {
           return;
         }
+        const pin = prompt('Enter your 6-digit Creator PIN to confirm:');
+        if (pin === null) return;
+        const cleanedPin = pin.trim();
+        if (cleanedPin.length !== 6 || isNaN(cleanedPin)) {
+          alert('PIN must be exactly 6 digits.');
+          return;
+        }
+
         try {
           const res = await fetch(CHAT_API_BASE, {
             method: 'DELETE',
             headers: {
               'x-vault-id': vaultId,
-              'x-creator-token': getCreatorToken()
+              'x-creator-token': getCreatorToken(),
+              'x-creator-pin': cleanedPin
             }
           });
           if (res.ok) {
@@ -2208,12 +2310,21 @@
           return;
         }
 
+        const pin = prompt('Enter your 6-digit Creator PIN to confirm deletion:');
+        if (pin === null) return;
+        const cleanedPin = pin.trim();
+        if (cleanedPin.length !== 6 || isNaN(cleanedPin)) {
+          alert('PIN must be exactly 6 digits.');
+          return;
+        }
+
         try {
           const res = await fetch(`${API_BASE}/purge/all`, {
             method: 'DELETE',
             headers: {
               'x-vault-id': vaultId,
-              'x-creator-token': getCreatorToken()
+              'x-creator-token': getCreatorToken(),
+              'x-creator-pin': cleanedPin
             }
           });
           if (res.ok) {
@@ -2226,10 +2337,25 @@
             // Switch to a new local device vault
             const rand = Math.random().toString(36).substring(2, 10);
             const newId = `device-${rand}`;
-            localStorage.setItem('webvault_vault_id', newId);
-            const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            localStorage.setItem(`webvault_creator_token_${newId}`, token);
             
+            const newPin = prompt(`Please enter a 6-digit PIN to secure your new local device vault:`);
+            if (newPin === null) return;
+            const cleanedNewPin = newPin.trim();
+            if (cleanedNewPin.length !== 6 || isNaN(cleanedNewPin)) {
+              alert('PIN must be exactly 6 digits.');
+              return;
+            }
+
+            const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            try {
+              await apiCreateVault(newId, token, cleanedNewPin);
+              localStorage.setItem(`webvault_creator_token_${newId}`, token);
+            } catch (e) {
+              alert('Vault Registration Error: ' + e.message);
+              return;
+            }
+
+            localStorage.setItem('webvault_vault_id', newId);
             vaultId = newId;
             updateProfileDisplay();
             profileModalOverlay.classList.remove('open');
@@ -2273,13 +2399,22 @@
           return;
         }
 
+        const pin = prompt('Enter your 6-digit Creator PIN to authorize rename:');
+        if (pin === null) return;
+        const cleanedPin = pin.trim();
+        if (cleanedPin.length !== 6 || isNaN(cleanedPin)) {
+          alert('PIN must be exactly 6 digits.');
+          return;
+        }
+
         try {
           const res = await fetch(`${API_BASE}/vault/rename`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
               'x-vault-id': vaultId,
-              'x-creator-token': getCreatorToken()
+              'x-creator-token': getCreatorToken(),
+              'x-creator-pin': cleanedPin
             },
             body: JSON.stringify({ newVaultId: newId })
           });

@@ -72,10 +72,16 @@ router.post('/', async (req, res) => {
 router.delete('/', async (req, res) => {
     try {
         const creatorToken = req.headers['x-creator-token'] || '';
+        const creatorPin = req.headers['x-creator-pin'] || '';
         const Vault = require('../models/Vault');
         const vault = await Vault.findOne({ vaultId: req.vaultId });
-        if (vault && vault.creatorToken !== creatorToken) {
-            return res.status(403).json({ error: 'Only the creator of this vault can clear the chat history.' });
+        if (vault) {
+            if (vault.creatorToken !== creatorToken) {
+                return res.status(403).json({ error: 'Only the creator of this vault can clear the chat history.' });
+            }
+            if (vault.creatorPin && vault.creatorPin !== creatorPin) {
+                return res.status(403).json({ error: 'Invalid 6-digit Creator PIN.' });
+            }
         }
 
         const result = await Message.deleteMany({ vaultId: req.vaultId });

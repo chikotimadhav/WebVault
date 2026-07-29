@@ -3,6 +3,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const websiteRoutes = require('./routes/websites');
 const messageRoutes = require('./routes/messages');
+const adminRoutes = require('./routes/admin');
 
 // Toggle to stop the website and show an error (set to false to run normal operations)
 const IS_WEBSITE_STOPPED = false;
@@ -55,8 +56,31 @@ app.use(async (req, res, next) => {
     next();
 });
 
+// Vault suspension check middleware
+app.use(async (req, res, next) => {
+    if (req.path.startsWith('/api') && !req.path.startsWith('/api/admin')) {
+        const vaultId = req.headers['x-vault-id'] || req.query.vaultId;
+        if (vaultId) {
+            try {
+                const Vault = require('./models/Vault');
+                const vault = await Vault.findOne({ vaultId: vaultId.trim() });
+                if (vault && vault.suspended) {
+                    return res.status(403).json({
+                        error: 'This vault has been suspended by the administrator.',
+                        code: 'VAULT_SUSPENDED'
+                    });
+                }
+            } catch (err) {
+                console.error('Error checking vault suspension:', err);
+            }
+        }
+    }
+    next();
+});
+
 app.use('/api/websites', websiteRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/admin', adminRoutes);
 
 
 

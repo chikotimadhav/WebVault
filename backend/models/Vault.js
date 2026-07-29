@@ -5,6 +5,7 @@ const vaultSchema = new mongoose.Schema({
     creatorToken: { type: String, required: true, trim: true },
     creatorPin: { type: String, default: '000000', trim: true },
     renamedTo: { type: String, default: null, trim: true },
+    suspended: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }
 });
 

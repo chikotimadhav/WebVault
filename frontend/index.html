@@ -958,6 +958,7 @@
       <button class="btn" id="profileBtn" style="gap: 6px;"><i class="fas fa-user-circle"></i> <span id="profileDisplay">Loading...</span></button>
       <button class="btn" id="shareBtn" style="gap: 6px;"><i class="fas fa-share-nodes"></i> Share</button>
       <button class="btn btn-primary" id="addBtn"><i class="fas fa-plus"></i> Add</button>
+      <button class="theme-toggle" id="adminBtn" title="Super Admin Panel" style="margin-right: 8px;"><i class="fas fa-shield-halved"></i></button>
       <button class="theme-toggle" id="themeToggle"><i class="fas fa-moon"></i></button>
     </div>
   </nav>
@@ -1101,6 +1102,51 @@
 
     <div class="modal-actions">
       <button class="btn" id="shareModalClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Super Admin Login Modal -->
+<div class="modal-overlay" id="adminLoginModalOverlay">
+  <div class="modal glass" style="background: var(--surface-solid); max-width: 400px;">
+    <h3><i class="fas fa-shield-halved"></i> Super Admin Login</h3>
+    <label>Admin ID</label>
+    <input type="text" id="adminLoginId" placeholder="Enter Admin ID" style="margin-bottom: 12px;" />
+    <label>Password</label>
+    <input type="password" id="adminLoginPassword" placeholder="Enter Password" style="margin-bottom: 16px;" />
+    <div class="modal-actions">
+      <button class="btn" id="adminLoginCancel">Cancel</button>
+      <button class="btn btn-primary" id="adminLoginSubmit"><i class="fas fa-sign-in-alt"></i> Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- Super Admin Panel Modal -->
+<div class="modal-overlay" id="adminPanelModalOverlay">
+  <div class="modal glass" style="background: var(--surface-solid); max-width: 700px; width: 90%;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+      <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;"><i class="fas fa-shield-halved" style="color: var(--accent);"></i> Super Admin Panel</h3>
+      <button class="btn" id="adminPanelLogout" style="font-size: 0.8rem; padding: 6px 12px; height: auto; background: rgba(225, 112, 85, 0.1); color: var(--danger); border-color: rgba(225, 112, 85, 0.2);"><i class="fas fa-sign-out-alt"></i> Logout</button>
+    </div>
+    
+    <div style="max-height: 400px; overflow-y: auto; margin-bottom: 20px;">
+      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+        <thead>
+          <tr style="border-bottom: 2px solid var(--border); color: var(--text-secondary);">
+            <th style="padding: 10px 8px;">Vault ID</th>
+            <th style="padding: 10px 8px;">Apps</th>
+            <th style="padding: 10px 8px;">Status</th>
+            <th style="padding: 10px 8px; text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="adminVaultsTableBody">
+          <!-- Dynamic rows will go here -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" id="adminPanelClose">Close</button>
     </div>
   </div>
 </div>
@@ -1292,21 +1338,60 @@
       });
     }
 
+    function handleVaultSuspended() {
+      alert("This vault has been suspended by the administrator. Switching back to local device vault.");
+      
+      const rand = Math.random().toString(36).substring(2, 10);
+      const newId = `device-${rand}`;
+      localStorage.setItem('webvault_vault_id', newId);
+      
+      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      apiCreateVault(newId, token, '000000').then(() => {
+        localStorage.setItem(`webvault_creator_token_${newId}`, token);
+      }).catch(e => console.error(e));
+
+      vaultId = newId;
+      updateProfileDisplay();
+      onVaultChange();
+      
+      // reload data
+      websites = [];
+      grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
+      loadFromServer().then(() => {
+        render();
+        renderCharts();
+      });
+    }
+
+    async function safeFetch(url, options = {}) {
+      if (!options.headers) options.headers = {};
+      const isCustomCall = url.includes('/vault/check') || url.includes('/vault/create') || url.includes('/admin/');
+      if (!isCustomCall) {
+        options.headers['x-vault-id'] = vaultId;
+        const creatorToken = getCreatorToken();
+        if (creatorToken) options.headers['x-creator-token'] = creatorToken;
+      }
+      const res = await fetch(url, options);
+      if (res.status === 409) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.code === 'VAULT_RENAMED') {
+          handleVaultRedirect(errData.renamedTo);
+          throw new Error('Vault renamed. Redirecting...');
+        }
+      }
+      if (res.status === 403) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.code === 'VAULT_SUSPENDED') {
+          handleVaultSuspended();
+          throw new Error('Vault suspended. Redirecting...');
+        }
+      }
+      return res;
+    }
+
     async function apiGet() {
       try {
-        const res = await fetch(API_BASE, {
-          headers: { 
-            'x-vault-id': vaultId,
-            'x-creator-token': getCreatorToken()
-          }
-        });
-        if (res.status === 409) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.code === 'VAULT_RENAMED') {
-            handleVaultRedirect(errData.renamedTo);
-            return [];
-          }
-        }
+        const res = await safeFetch(API_BASE);
         if (res.ok) {
           const data = await res.json();
           localStorage.setItem(getStorageKey(), JSON.stringify(data));
@@ -1321,22 +1406,11 @@
 
     async function apiCreate(payload) {
       try {
-        const res = await fetch(API_BASE, {
+        const res = await safeFetch(API_BASE, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-vault-id': vaultId,
-            'x-creator-token': getCreatorToken()
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (res.status === 409) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.code === 'VAULT_RENAMED') {
-            handleVaultRedirect(errData.renamedTo);
-            throw new Error('Vault renamed. Redirecting...');
-          }
-        }
         if (res.ok) {
           const saved = await res.json();
           await apiGet(); // update cache
@@ -1366,22 +1440,11 @@
 
     async function apiUpdate(id, payload) {
       try {
-        const res = await fetch(`${API_BASE}/${id}`, {
+        const res = await safeFetch(`${API_BASE}/${id}`, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-vault-id': vaultId,
-            'x-creator-token': getCreatorToken()
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (res.status === 409) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.code === 'VAULT_RENAMED') {
-            handleVaultRedirect(errData.renamedTo);
-            throw new Error('Vault renamed. Redirecting...');
-          }
-        }
         if (res.ok) {
           const updated = await res.json();
           await apiGet(); // update cache
@@ -1404,20 +1467,9 @@
 
     async function apiToggleFav(id) {
       try {
-        const res = await fetch(`${API_BASE}/${id}/fav`, {
-          method: 'PATCH',
-          headers: { 
-            'x-vault-id': vaultId,
-            'x-creator-token': getCreatorToken()
-          }
+        const res = await safeFetch(`${API_BASE}/${id}/fav`, {
+          method: 'PATCH'
         });
-        if (res.status === 409) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.code === 'VAULT_RENAMED') {
-            handleVaultRedirect(errData.renamedTo);
-            throw new Error('Vault renamed. Redirecting...');
-          }
-        }
         if (res.ok) {
           const updated = await res.json();
           await apiGet(); // update cache
@@ -1437,20 +1489,9 @@
 
     async function apiVisit(id) {
       try {
-        const res = await fetch(`${API_BASE}/${id}/visit`, {
-          method: 'PATCH',
-          headers: { 
-            'x-vault-id': vaultId,
-            'x-creator-token': getCreatorToken()
-          }
+        const res = await safeFetch(`${API_BASE}/${id}/visit`, {
+          method: 'PATCH'
         });
-        if (res.status === 409) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.code === 'VAULT_RENAMED') {
-            handleVaultRedirect(errData.renamedTo);
-            throw new Error('Vault renamed. Redirecting...');
-          }
-        }
         if (res.ok) {
           const updated = await res.json();
           await apiGet(); // update cache
@@ -1472,20 +1513,9 @@
 
     async function apiDelete(id) {
       try {
-        const res = await fetch(`${API_BASE}/${id}`, {
-          method: 'DELETE',
-          headers: { 
-            'x-vault-id': vaultId,
-            'x-creator-token': getCreatorToken()
-          }
+        const res = await safeFetch(`${API_BASE}/${id}`, {
+          method: 'DELETE'
         });
-        if (res.status === 409) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.code === 'VAULT_RENAMED') {
-            handleVaultRedirect(errData.renamedTo);
-            throw new Error('Vault renamed. Redirecting...');
-          }
-        }
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || 'Failed to delete website');
@@ -1528,18 +1558,7 @@
         const url = chatUsername 
           ? `${CHAT_API_BASE}?username=${encodeURIComponent(chatUsername)}` 
           : CHAT_API_BASE;
-        const res = await fetch(url, {
-          headers: {
-            'x-vault-id': vaultId
-          }
-        });
-        if (res.status === 409) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.code === 'VAULT_RENAMED') {
-            handleVaultRedirect(errData.renamedTo);
-            return { messages: [], onlineUsers: [] };
-          }
-        }
+        const res = await safeFetch(url);
         if (res.ok) {
           return res.json();
         }
@@ -1550,21 +1569,11 @@
     }
 
     async function apiSendMessage(text) {
-      const res = await fetch(CHAT_API_BASE, {
+      const res = await safeFetch(CHAT_API_BASE, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-vault-id': vaultId
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sender: chatUsername, text })
       });
-      if (res.status === 409) {
-        const errData = await res.json().catch(() => ({}));
-        if (errData.code === 'VAULT_RENAMED') {
-          handleVaultRedirect(errData.renamedTo);
-          throw new Error('Vault renamed. Redirecting...');
-        }
-      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to send message');
@@ -2541,6 +2550,189 @@
           alert('Error: ' + e.message);
         }
       });
+
+      // ----- Super Admin Event Listeners & Functions -----
+      const adminBtn = document.getElementById('adminBtn');
+      const adminLoginModalOverlay = document.getElementById('adminLoginModalOverlay');
+      const adminLoginCancel = document.getElementById('adminLoginCancel');
+      const adminLoginSubmit = document.getElementById('adminLoginSubmit');
+      const adminLoginId = document.getElementById('adminLoginId');
+      const adminLoginPassword = document.getElementById('adminLoginPassword');
+      
+      const adminPanelModalOverlay = document.getElementById('adminPanelModalOverlay');
+      const adminPanelLogout = document.getElementById('adminPanelLogout');
+      const adminPanelClose = document.getElementById('adminPanelClose');
+      const adminVaultsTableBody = document.getElementById('adminVaultsTableBody');
+
+      function getAdminToken() {
+        return sessionStorage.getItem('webvault_admin_token') || '';
+      }
+
+      adminBtn.addEventListener('click', () => {
+        const token = getAdminToken();
+        if (token) {
+          showAdminPanel();
+        } else {
+          adminLoginId.value = '';
+          adminLoginPassword.value = '';
+          adminLoginModalOverlay.classList.add('open');
+          setTimeout(() => adminLoginId.focus(), 100);
+        }
+      });
+
+      adminLoginCancel.addEventListener('click', () => {
+        adminLoginModalOverlay.classList.remove('open');
+      });
+
+      adminLoginSubmit.addEventListener('click', async () => {
+        const username = adminLoginId.value.trim();
+        const password = adminLoginPassword.value;
+        if (!username || !password) {
+          alert('Please enter Admin ID and Password');
+          return;
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/admin/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            sessionStorage.setItem('webvault_admin_token', data.token);
+            adminLoginModalOverlay.classList.remove('open');
+            showAdminPanel();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || 'Login failed.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      });
+
+      adminLoginPassword.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') adminLoginSubmit.click();
+      });
+
+      adminPanelLogout.addEventListener('click', () => {
+        sessionStorage.removeItem('webvault_admin_token');
+        adminPanelModalOverlay.classList.remove('open');
+        alert('Super Admin logged out.');
+      });
+
+      adminPanelClose.addEventListener('click', () => {
+        adminPanelModalOverlay.classList.remove('open');
+      });
+
+      async function showAdminPanel() {
+        adminPanelModalOverlay.classList.add('open');
+        await loadAdminVaults();
+      }
+
+      async function loadAdminVaults() {
+        adminVaultsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading vaults...</td></tr>`;
+        try {
+          const res = await fetch(`${API_BASE}/admin/vaults`, {
+            headers: { 'x-admin-token': getAdminToken() }
+          });
+          if (res.ok) {
+            const vaults = await res.json();
+            renderAdminVaults(vaults);
+          } else {
+            const err = await res.json().catch(() => ({}));
+            adminVaultsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--danger);">${escapeHtml(err.error || 'Failed to load vaults.')}</td></tr>`;
+          }
+        } catch (e) {
+          adminVaultsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--danger);">Error: ${escapeHtml(e.message)}</td></tr>`;
+        }
+      }
+
+      function renderAdminVaults(vaults) {
+        if (!vaults || vaults.length === 0) {
+          adminVaultsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-secondary);">No vaults found.</td></tr>`;
+          return;
+        }
+
+        adminVaultsTableBody.innerHTML = vaults.map(v => {
+          const statusText = v.suspended 
+            ? `<span style="color:var(--danger);font-weight:600;"><i class="fas fa-ban"></i> Suspended</span>` 
+            : v.renamedTo
+              ? `<span style="color:var(--text-secondary);font-style:italic;"><i class="fas fa-arrow-right"></i> Renamed to ${escapeHtml(v.renamedTo)}</span>`
+              : `<span style="color:var(--green);font-weight:600;"><i class="fas fa-circle-check"></i> Active</span>`;
+              
+          const suspendBtnText = v.suspended ? '<i class="fas fa-play"></i> Unsuspend' : '<i class="fas fa-pause"></i> Suspend';
+          const suspendBtnStyle = v.suspended 
+            ? 'background:rgba(46,204,113,0.1);color:var(--green);border-color:rgba(46,204,113,0.2);' 
+            : 'background:rgba(241,196,15,0.1);color:var(--yellow);border-color:rgba(241,196,15,0.2);';
+
+          return `
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:12px 8px;font-family:monospace;font-weight:600;word-break:break-all;">${escapeHtml(v.vaultId)}</td>
+              <td style="padding:12px 8px;">${v.websiteCount}</td>
+              <td style="padding:12px 8px;">${statusText}</td>
+              <td style="padding:12px 8px;text-align:right;">
+                <div style="display:flex;gap:6px;justify-content:flex-end;">
+                  <button class="btn btn-suspend" data-id="${escapeHtml(v.vaultId)}" style="font-size:0.75rem;padding:4px 8px;height:auto;${suspendBtnStyle}">
+                    ${suspendBtnText}
+                  </button>
+                  <button class="btn btn-delete-vault" data-id="${escapeHtml(v.vaultId)}" style="font-size:0.75rem;padding:4px 8px;height:auto;background:rgba(225,112,85,0.1);color:var(--danger);border-color:rgba(225,112,85,0.2);">
+                    <i class="fas fa-trash-alt"></i> Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        // Wire suspend buttons
+        adminVaultsTableBody.querySelectorAll('.btn-suspend').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const vid = btn.dataset.id;
+            try {
+              const res = await fetch(`${API_BASE}/admin/vaults/${encodeURIComponent(vid)}/suspend`, {
+                method: 'PATCH',
+                headers: { 'x-admin-token': getAdminToken() }
+              });
+              if (res.ok) {
+                await loadAdminVaults();
+              } else {
+                const err = await res.json().catch(() => ({}));
+                alert(err.error || 'Failed to toggle suspend status.');
+              }
+            } catch (e) {
+              alert('Error: ' + e.message);
+            }
+          });
+        });
+
+        // Wire delete buttons
+        adminVaultsTableBody.querySelectorAll('.btn-delete-vault').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const vid = btn.dataset.id;
+            if (!confirm(`Are you sure you want to permanently delete the vault "${vid}" and all associated data? This action cannot be undone.`)) {
+              return;
+            }
+            try {
+              const res = await fetch(`${API_BASE}/admin/vaults/${encodeURIComponent(vid)}`, {
+                method: 'DELETE',
+                headers: { 'x-admin-token': getAdminToken() }
+              });
+              if (res.ok) {
+                alert(`Vault "${vid}" has been deleted.`);
+                await loadAdminVaults();
+              } else {
+                const err = await res.json().catch(() => ({}));
+                alert(err.error || 'Failed to delete vault.');
+              }
+            } catch (e) {
+              alert('Error: ' + e.message);
+            }
+          });
+        });
+      }
 
       // initial charts
       setTimeout(renderCharts, 200);

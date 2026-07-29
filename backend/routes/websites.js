@@ -1,12 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const Website = require('../models/Website');
+const Vault = require('../models/Vault');
+
+// Helper to ensure vault registration
+async function ensureVaultRegistered(vaultId, creatorToken) {
+    if (!vaultId) return;
+    try {
+        let vault = await Vault.findOne({ vaultId });
+        if (!vault) {
+            vault = new Vault({
+                vaultId,
+                creatorToken: creatorToken || 'legacy-guest-token'
+            });
+            await vault.save();
+        }
+    } catch (err) {
+        console.error('Error ensuring vault is registered:', err);
+    }
+}
 
 // Middleware to extract x-vault-id header for all website API operations (with fallback for legacy clients)
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
     const vaultId = req.headers['x-vault-id'];
     // If header is missing, fall back to default legacy guest vault to prevent breaking old clients
     req.vaultId = vaultId || 'guest@webvault.local';
+    req.creatorToken = req.headers['x-creator-token'] || '';
+
+    // Register vault if it does not exist yet
+    await ensureVaultRegistered(req.vaultId, req.creatorToken);
+
     next();
 });
 
@@ -108,9 +131,14 @@ router.patch('/:id/visit', async (req, res) => {
     }
 });
 
-// DELETE /api/websites/:id -> remove in specific vaultId
+// DELETE /api/websites/:id -> remove in specific vaultId (restricted to creator)
 router.delete('/:id', async (req, res) => {
     try {
+        const vault = await Vault.findOne({ vaultId: req.vaultId });
+        if (vault && vault.creatorToken !== req.creatorToken) {
+            return res.status(403).json({ error: 'Only the creator of this vault can delete websites.' });
+        }
+
         const deleted = await Website.findOneAndDelete({ _id: req.params.id, vaultId: req.vaultId });
         if (!deleted) return res.status(404).json({ error: 'Website not found in this vault' });
         res.json({ success: true });

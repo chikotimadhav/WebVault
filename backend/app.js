@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const websiteRoutes = require('./routes/websites');
 
 // Toggle to stop the website and show an error (set to false to run normal operations)
-const IS_WEBSITE_STOPPED = true;
+const IS_WEBSITE_STOPPED = false;
 
 const app = express();
 

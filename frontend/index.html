@@ -515,6 +515,37 @@
       }
     }
 
+    /* Auto-refresh pulsing dot */
+    @keyframes pulse-green {
+      0% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.7);
+      }
+      70% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 8px rgba(0, 184, 148, 0);
+      }
+      100% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(0, 184, 148, 0);
+      }
+    }
+    .pulse-green {
+      animation: pulse-green 2.0s infinite;
+    }
+
+    /* Locked delete button styling */
+    .btn-delete.locked {
+      background: rgba(0, 0, 0, 0.04) !important;
+      border-color: var(--border) !important;
+      color: var(--text-secondary) !important;
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .dark .btn-delete.locked {
+      background: rgba(255, 255, 255, 0.04) !important;
+    }
+
     /* Website Stopped / Maintenance Screen */
     .website-stopped-container {
       position: fixed;
@@ -664,6 +695,11 @@
     <span class="stat-item"><i class="fas fa-calendar-week"></i> This Week: <span id="weekCount">0</span></span>
     <span class="stat-divider"></span>
     <span class="stat-item"><i class="fas fa-calendar-alt"></i> This Month: <span id="monthCount">0</span></span>
+    <span class="stat-divider"></span>
+    <span class="stat-item" style="opacity: 0.85; font-size: 0.8rem; margin-left: auto; display: flex; align-items: center; gap: 6px;">
+      <span class="refresh-indicator-dot pulse-green" id="refreshDot" style="width: 8px; height: 8px; background: var(--green); border-radius: 50%; display: inline-block;"></span>
+      Auto-refreshing
+    </span>
   </div>
 
   <!-- Chart Row -->
@@ -836,10 +872,17 @@
       return `webvault_websites_${vaultId}`;
     }
 
+    function getCreatorToken() {
+      return localStorage.getItem(`webvault_creator_token_${vaultId}`) || '';
+    }
+
     async function apiGet() {
       try {
         const res = await fetch(API_BASE, {
-          headers: { 'x-vault-id': vaultId }
+          headers: { 
+            'x-vault-id': vaultId,
+            'x-creator-token': getCreatorToken()
+          }
         });
         if (res.ok) {
           const data = await res.json();
@@ -859,7 +902,8 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-vault-id': vaultId
+            'x-vault-id': vaultId,
+            'x-creator-token': getCreatorToken()
           },
           body: JSON.stringify(payload)
         });
@@ -896,7 +940,8 @@
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'x-vault-id': vaultId
+            'x-vault-id': vaultId,
+            'x-creator-token': getCreatorToken()
           },
           body: JSON.stringify(payload)
         });
@@ -924,7 +969,10 @@
       try {
         const res = await fetch(`${API_BASE}/${id}/fav`, {
           method: 'PATCH',
-          headers: { 'x-vault-id': vaultId }
+          headers: { 
+            'x-vault-id': vaultId,
+            'x-creator-token': getCreatorToken()
+          }
         });
         if (res.ok) {
           const updated = await res.json();
@@ -947,7 +995,10 @@
       try {
         const res = await fetch(`${API_BASE}/${id}/visit`, {
           method: 'PATCH',
-          headers: { 'x-vault-id': vaultId }
+          headers: { 
+            'x-vault-id': vaultId,
+            'x-creator-token': getCreatorToken()
+          }
         });
         if (res.ok) {
           const updated = await res.json();
@@ -972,15 +1023,28 @@
       try {
         const res = await fetch(`${API_BASE}/${id}`, {
           method: 'DELETE',
-          headers: { 'x-vault-id': vaultId }
+          headers: { 
+            'x-vault-id': vaultId,
+            'x-creator-token': getCreatorToken()
+          }
         });
-        if (res.ok) {
-          const deleted = await res.json();
-          await apiGet(); // update cache
-          return deleted;
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to delete website');
         }
+        const deleted = await res.json();
+        await apiGet(); // update cache
+        return deleted;
       } catch (e) {
+        if (e.message && (e.message.includes('Only') || e.message.includes('creator') || e.message.includes('Failed to delete website'))) {
+          throw e;
+        }
         console.warn('Backend offline, deleting locally:', e);
+      }
+
+      // Offline delete safety check
+      if (!getCreatorToken()) {
+        throw new Error('Only the creator of this vault can delete websites.');
       }
 
       let list = await apiGet();
@@ -1119,6 +1183,12 @@
           const favClass = w.fav ? 'active' : '';
           const todayVisits = getVisitsInRange(w.history, 'today');
           const weekVisits = getVisitsInRange(w.history, 'week');
+          
+          const hasDeleteAccess = !!localStorage.getItem('webvault_creator_token_' + vaultId);
+          const deleteBtnHtml = hasDeleteAccess
+            ? `<button class="btn-delete" data-id="${w._id}" title="Delete App"><i class="fas fa-trash-alt"></i></button>`
+            : `<button class="btn-delete locked" data-id="${w._id}" title="Only the creator of this vault can delete apps."><i class="fas fa-lock"></i></button>`;
+
           return `
             <div class="website-card" data-id="${w._id}">
               <div class="card-favicon">
@@ -1134,7 +1204,7 @@
               <div class="card-actions">
                 <button class="btn btn-open" data-url="${w.url}"><i class="fas fa-external-link-alt"></i> Open</button>
                 <button class="btn-edit" data-id="${w._id}"><i class="fas fa-edit"></i></button>
-                <button class="btn-delete" data-id="${w._id}"><i class="fas fa-trash-alt"></i></button>
+                ${deleteBtnHtml}
                 <button class="btn-fav ${favClass}" data-id="${w._id}"><i class="fas fa-star"></i></button>
               </div>
             </div>
@@ -1197,6 +1267,13 @@
           const id = btn.dataset.id;
           const w = websites.find(x => x._id === id);
           if (!w) return;
+          
+          const hasDeleteAccess = !!localStorage.getItem('webvault_creator_token_' + vaultId);
+          if (!hasDeleteAccess) {
+            alert('Access Denied: Only the creator of this vault can delete items.');
+            return;
+          }
+
           if (confirm(`Are you sure you want to delete ${w.title}?`)) {
             try {
               await apiDelete(id);
@@ -1313,6 +1390,11 @@
         id = `device-${rand}`;
         localStorage.setItem('webvault_vault_id', id);
       }
+      // Also generate a creator token for this vaultId if we don't have one yet!
+      if (id && !localStorage.getItem(`webvault_creator_token_${id}`)) {
+        const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem(`webvault_creator_token_${id}`, token);
+      }
       return id;
     }
 
@@ -1328,7 +1410,7 @@
     }
 
     // Toggle to stop the website and show an error (set to false to run normal operations)
-    const IS_WEBSITE_STOPPED = true;
+    const IS_WEBSITE_STOPPED = false;
 
     // ----- init -----
     async function init() {
@@ -1442,6 +1524,12 @@
 
           localStorage.setItem('webvault_vault_id', newEmail);
           vaultId = newEmail;
+
+          // Generate a creator token for this email if it doesn't already exist on this device
+          if (!localStorage.getItem(`webvault_creator_token_${newEmail}`)) {
+            const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem(`webvault_creator_token_${newEmail}`, token);
+          }
         } else {
           const code = accessShareCode.value.trim();
           if (!code) {
@@ -1455,6 +1543,7 @@
           
           localStorage.setItem('webvault_vault_id', code);
           vaultId = code;
+          // Notice we DO NOT generate a creator token here, since they are accessing a shared vault!
         }
 
         updateProfileDisplay();
@@ -1472,6 +1561,11 @@
         const rand = Math.random().toString(36).substring(2, 10);
         const newId = `device-${rand}`;
         localStorage.setItem('webvault_vault_id', newId);
+
+        // Generate creator token for this new local ID
+        const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem(`webvault_creator_token_${newId}`, token);
+
         vaultId = newId;
         updateProfileDisplay();
         profileModalOverlay.classList.remove('open');
@@ -1524,6 +1618,34 @@
 
       // initial charts
       setTimeout(renderCharts, 200);
+
+      // 10-second auto-refresh timer with visual feedback
+      setInterval(async () => {
+        // Only refresh if search input is not active and no modals are open
+        if (
+          document.activeElement !== searchInput &&
+          !modalOverlay.classList.contains('open') &&
+          !profileModalOverlay.classList.contains('open') &&
+          !shareModalOverlay.classList.contains('open')
+        ) {
+          const dot = document.getElementById('refreshDot');
+          if (dot) {
+            // Flash dot rapidly to indicate active sync
+            dot.style.transform = 'scale(1.3)';
+            dot.style.background = 'var(--accent)';
+          }
+          
+          await loadFromServer();
+          render();
+          
+          if (dot) {
+            setTimeout(() => {
+              dot.style.transform = '';
+              dot.style.background = 'var(--green)';
+            }, 600);
+          }
+        }
+      }, 10000);
     }
 
     init();

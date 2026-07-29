@@ -647,6 +647,251 @@
         box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
       }
     }
+
+    /* Vault Chat Styles */
+    .chat-toggle-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+      color: white;
+      border: none;
+      box-shadow: 0 8px 24px rgba(108, 92, 231, 0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      z-index: 1000;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .chat-toggle-btn:hover {
+      transform: scale(1.05) rotate(5deg);
+      box-shadow: 0 10px 28px rgba(108, 92, 231, 0.45);
+    }
+    .chat-toggle-btn:active {
+      transform: scale(0.95);
+    }
+    .chat-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--danger);
+      border: 2px solid var(--bg);
+    }
+
+    .chat-window {
+      position: fixed;
+      bottom: 92px;
+      right: 24px;
+      width: 360px;
+      height: 500px;
+      max-height: calc(100vh - 130px);
+      max-width: calc(100vw - 48px);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      overflow: hidden;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s;
+      transform: scale(0.8) translateY(40px);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .chat-window.open {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .chat-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface-solid);
+    }
+    .chat-title-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+    .chat-title-container i {
+      color: var(--accent);
+    }
+    .chat-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .chat-close-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 1.5rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px;
+    }
+    .chat-close-btn:hover {
+      color: var(--text);
+    }
+
+    .chat-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .chat-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px;
+    }
+
+    /* Screen 1: Enter Name */
+    #chatNameScreen {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      gap: 16px;
+    }
+    .chat-intro-text {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .chat-name-form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-name-form input {
+      padding: 12px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      text-align: center;
+    }
+    .chat-name-form input:focus {
+      border-color: var(--accent);
+    }
+
+    /* Screen 2: Chat active */
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 4px;
+      margin-bottom: 12px;
+    }
+    
+    /* Scrollbar for chat messages */
+    .chat-messages::-webkit-scrollbar {
+      width: 6px;
+    }
+    .chat-messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .chat-messages::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    .chat-msg-wrapper {
+      display: flex;
+      flex-direction: column;
+      max-width: 80%;
+    }
+    .chat-msg-wrapper.self {
+      align-self: flex-end;
+    }
+    .chat-msg-wrapper.other {
+      align-self: flex-start;
+    }
+    .chat-msg-bubble {
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .self .chat-msg-bubble {
+      background: var(--accent);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .other .chat-msg-bubble {
+      background: var(--surface-solid);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    .chat-msg-meta {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      padding: 0 4px;
+    }
+    .self .chat-msg-meta {
+      text-align: right;
+    }
+
+    .chat-input-area {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: var(--surface-solid);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 6px 6px 6px 14px;
+    }
+    .chat-input-area input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      padding: 4px 0;
+    }
+    .chat-input-area button {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .chat-input-area button:hover {
+      background: var(--accent-soft);
+    }
+    .chat-input-area button:active {
+      transform: scale(0.9);
+    }
   </style>
 </head>
 <body>
@@ -790,6 +1035,43 @@
   </div>
 </div>
 
+<!-- Vault Chat Widget -->
+<button class="chat-toggle-btn" id="chatToggleBtn" title="Vault Chat">
+  <i class="fas fa-comments"></i>
+  <span class="chat-badge" id="chatBadge" style="display: none;"></span>
+</button>
+
+<div class="chat-window glass" id="chatWindow">
+  <div class="chat-header">
+    <div class="chat-title-container">
+      <i class="fas fa-comments"></i>
+      <span class="chat-title">Vault Chat</span>
+      <span class="chat-status-dot"></span>
+    </div>
+    <button class="chat-close-btn" id="chatCloseBtn">&times;</button>
+  </div>
+  <div class="chat-body">
+    <!-- Screen 1: Ask for name -->
+    <div class="chat-screen" id="chatNameScreen">
+      <p class="chat-intro-text">Welcome to Vault Chat! Enter your name to start chatting with others in this vault.</p>
+      <div class="chat-name-form">
+        <input type="text" id="chatUsernameInput" placeholder="Your Name" maxlength="20" />
+        <button class="btn btn-primary" id="chatJoinBtn">Join Chat</button>
+      </div>
+    </div>
+    <!-- Screen 2: Active Chat -->
+    <div class="chat-screen" id="chatActiveScreen" style="display: none;">
+      <div class="chat-messages" id="chatMessages">
+        <!-- Messages will be populated here -->
+      </div>
+      <div class="chat-input-area">
+        <input type="text" id="chatMessageInput" placeholder="Type a message..." maxlength="200" />
+        <button id="chatSendBtn"><i class="fas fa-paper-plane"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   (function(){
     // ----- config -----
@@ -797,11 +1079,21 @@
         ? 'http://localhost:5000/api/websites'
         : '/api/websites';
 
+    const CHAT_API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000/api/messages'
+        : '/api/messages';
+
     // ----- state -----
     let websites = [];
     let activeFilter = 'all';
     let chartInstances = { today: null, week: null, month: null };
     let vaultId = '';
+
+    let chatUsername = localStorage.getItem('webvault_chat_username') || '';
+    let chatMessages = [];
+    let chatPollInterval = null;
+    let chatOpen = false;
+    let lastSeenMessageCount = 0;
 
     // DOM refs
     const grid = document.getElementById('cardGrid');
@@ -843,6 +1135,19 @@
     const shareCodeDisplay = document.getElementById('shareCodeDisplay');
     const btnCopyShareCode = document.getElementById('btnCopyShareCode');
     const shareModalClose = document.getElementById('shareModalClose');
+
+    // Chat DOM refs
+    const chatToggleBtn = document.getElementById('chatToggleBtn');
+    const chatBadge = document.getElementById('chatBadge');
+    const chatWindow = document.getElementById('chatWindow');
+    const chatCloseBtn = document.getElementById('chatCloseBtn');
+    const chatNameScreen = document.getElementById('chatNameScreen');
+    const chatUsernameInput = document.getElementById('chatUsernameInput');
+    const chatJoinBtn = document.getElementById('chatJoinBtn');
+    const chatActiveScreen = document.getElementById('chatActiveScreen');
+    const chatMessagesDiv = document.getElementById('chatMessages');
+    const chatMessageInput = document.getElementById('chatMessageInput');
+    const chatSendBtn = document.getElementById('chatSendBtn');
 
     // ----- Local Storage & Backend API Helpers -----
     function getStorageKey() {
@@ -1037,6 +1342,138 @@
         websites = websites.map(w => ({ ...w, visits: w.visits || 0, history: w.history || [] }));
       } catch (e) {
         websites = [];
+      }
+      await loadChatMessages();
+    }
+
+    // ----- Chat Helpers & API -----
+    async function apiGetMessages() {
+      try {
+        const res = await fetch(CHAT_API_BASE, {
+          headers: {
+            'x-vault-id': vaultId
+          }
+        });
+        if (res.ok) {
+          return res.json();
+        }
+      } catch (err) {
+        console.warn('Backend offline, cannot load chat messages:', err);
+      }
+      return [];
+    }
+
+    async function apiSendMessage(text) {
+      const res = await fetch(CHAT_API_BASE, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-vault-id': vaultId
+        },
+        body: JSON.stringify({ sender: chatUsername, text })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to send message');
+      }
+      return res.json();
+    }
+
+    function showChatScreen() {
+      if (chatUsername) {
+        chatNameScreen.style.display = 'none';
+        chatActiveScreen.style.display = 'flex';
+        setTimeout(() => chatMessageInput.focus(), 100);
+      } else {
+        chatNameScreen.style.display = 'flex';
+        chatActiveScreen.style.display = 'none';
+        setTimeout(() => chatUsernameInput.focus(), 100);
+      }
+    }
+
+    function joinChat() {
+      const name = chatUsernameInput.value.trim();
+      if (!name) {
+        alert('Please enter your name');
+        return;
+      }
+      chatUsername = name;
+      localStorage.setItem('webvault_chat_username', name);
+      showChatScreen();
+      loadChatMessages();
+    }
+
+    async function sendChatMessage() {
+      const text = chatMessageInput.value.trim();
+      if (!text) return;
+      chatMessageInput.value = '';
+      try {
+        const saved = await apiSendMessage(text);
+        chatMessages.push(saved);
+        lastSeenMessageCount = chatMessages.length;
+        renderChatMessages();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function loadChatMessages() {
+      if (!chatUsername) return;
+      try {
+        const msgs = await apiGetMessages();
+        chatMessages = msgs;
+        renderChatMessages();
+        
+        if (!chatOpen && chatMessages.length > lastSeenMessageCount) {
+          chatBadge.style.display = 'block';
+        } else if (chatOpen) {
+          lastSeenMessageCount = chatMessages.length;
+          chatBadge.style.display = 'none';
+        }
+      } catch (err) {
+        console.error('Chat error:', err);
+      }
+    }
+
+    function renderChatMessages() {
+      chatMessagesDiv.innerHTML = chatMessages.map(msg => {
+        const isSelf = msg.sender.toLowerCase() === chatUsername.toLowerCase();
+        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `
+          <div class="chat-msg-wrapper ${isSelf ? 'self' : 'other'}">
+            <div class="chat-msg-bubble">${escapeHtml(msg.text)}</div>
+            <div class="chat-msg-meta">${escapeHtml(msg.sender)} • ${timeStr}</div>
+          </div>
+        `;
+      }).join('');
+      chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    function startChatPolling() {
+      if (chatPollInterval) clearInterval(chatPollInterval);
+      loadChatMessages();
+      chatPollInterval = setInterval(loadChatMessages, 5000);
+    }
+
+    function stopChatPolling() {
+      if (chatPollInterval) {
+        clearInterval(chatPollInterval);
+        chatPollInterval = null;
+      }
+    }
+
+    function onVaultChange() {
+      chatMessages = [];
+      lastSeenMessageCount = 0;
+      chatBadge.style.display = 'none';
+      if (chatOpen) {
+        chatMessagesDiv.innerHTML = '';
+        showChatScreen();
+        loadChatMessages();
       }
     }
 
@@ -1525,6 +1962,7 @@
 
         updateProfileDisplay();
         profileModalOverlay.classList.remove('open');
+        onVaultChange();
 
         // reload data
         websites = [];
@@ -1546,6 +1984,7 @@
         vaultId = newId;
         updateProfileDisplay();
         profileModalOverlay.classList.remove('open');
+        onVaultChange();
 
         // reload data
         websites = [];
@@ -1593,10 +2032,40 @@
         }
       });
 
+      // Chat Listeners
+      chatToggleBtn.addEventListener('click', () => {
+        chatOpen = !chatOpen;
+        if (chatOpen) {
+          chatWindow.classList.add('open');
+          showChatScreen();
+          startChatPolling();
+          chatBadge.style.display = 'none';
+        } else {
+          chatWindow.classList.remove('open');
+          stopChatPolling();
+        }
+      });
+
+      chatCloseBtn.addEventListener('click', () => {
+        chatOpen = false;
+        chatWindow.classList.remove('open');
+        stopChatPolling();
+      });
+
+      chatJoinBtn.addEventListener('click', joinChat);
+      chatUsernameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') joinChat();
+      });
+
+      chatSendBtn.addEventListener('click', sendChatMessage);
+      chatMessageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendChatMessage();
+      });
+
       // initial charts
       setTimeout(renderCharts, 200);
 
-      // 10-second auto-refresh timer with visual feedback
+      // 40-second auto-refresh timer with visual feedback
       setInterval(async () => {
         // Only refresh if search input is not active and no modals are open
         if (
@@ -1608,7 +2077,7 @@
           await loadFromServer();
           render();
         }
-      }, 10000);
+      }, 40000);
     }
 
     init();

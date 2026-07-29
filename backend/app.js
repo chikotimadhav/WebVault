@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const websiteRoutes = require('./routes/websites');
+const messageRoutes = require('./routes/messages');
 
 // Toggle to stop the website and show an error (set to false to run normal operations)
 const IS_WEBSITE_STOPPED = false;
@@ -32,6 +33,7 @@ app.use((req, res, next) => {
 });
 
 app.use('/api/websites', websiteRoutes);
+app.use('/api/messages', messageRoutes);
 
 app.get('/', (req, res) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';

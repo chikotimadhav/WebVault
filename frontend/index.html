@@ -1206,6 +1206,10 @@
         ? 'http://localhost:5000/api/messages'
         : '/api/messages';
 
+    const ADMIN_API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000/api/admin'
+        : '/api/admin';
+
     // ----- state -----
     let websites = [];
     let activeFilter = 'all';
@@ -2593,7 +2597,7 @@
         }
 
         try {
-          const res = await fetch(`${API_BASE}/admin/login`, {
+          const res = await fetch(`${ADMIN_API_BASE}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
@@ -2635,7 +2639,7 @@
       async function loadAdminVaults() {
         adminVaultsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading vaults...</td></tr>`;
         try {
-          const res = await fetch(`${API_BASE}/admin/vaults`, {
+          const res = await fetch(`${ADMIN_API_BASE}/vaults`, {
             headers: { 'x-admin-token': getAdminToken() }
           });
           if (res.ok) {
@@ -2692,7 +2696,7 @@
           btn.addEventListener('click', async () => {
             const vid = btn.dataset.id;
             try {
-              const res = await fetch(`${API_BASE}/admin/vaults/${encodeURIComponent(vid)}/suspend`, {
+              const res = await fetch(`${ADMIN_API_BASE}/vaults/${encodeURIComponent(vid)}/suspend`, {
                 method: 'PATCH',
                 headers: { 'x-admin-token': getAdminToken() }
               });
@@ -2716,7 +2720,7 @@
               return;
             }
             try {
-              const res = await fetch(`${API_BASE}/admin/vaults/${encodeURIComponent(vid)}`, {
+              const res = await fetch(`${ADMIN_API_BASE}/vaults/${encodeURIComponent(vid)}`, {
                 method: 'DELETE',
                 headers: { 'x-admin-token': getAdminToken() }
               });

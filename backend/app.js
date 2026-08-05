@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const websiteRoutes = require('./routes/websites');
 const messageRoutes = require('./routes/messages');
 const adminRoutes = require('./routes/admin');
+const authRoutes = require('./routes/auth');
+const { requireVaultSession } = require('./middleware/auth');
 
 // Toggle to stop the website and show an error (set to false to run normal operations)
 const IS_WEBSITE_STOPPED = false;
@@ -77,6 +79,9 @@ app.use(async (req, res, next) => {
     }
     next();
 });
+
+app.use('/api/auth', authRoutes);
+app.use(requireVaultSession);
 
 app.use('/api/websites', websiteRoutes);
 app.use('/api/messages', messageRoutes);

@@ -1106,6 +1106,59 @@
   </div>
 </div>
 
+<!-- Face Authentication Modal -->
+<div class="modal-overlay" id="faceAuthModalOverlay">
+  <div class="modal glass" style="background: var(--surface-solid); max-width: 450px; width: 90%; padding: 28px; text-align: center;">
+    <h3 style="margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <i class="fas fa-user-lock" style="color: var(--accent);"></i> <span id="faceAuthTitle">Vault Authentication</span>
+    </h3>
+    
+    <!-- Step 1: PIN Login -->
+    <div id="faceAuthPinStep">
+      <p style="margin-bottom: 20px; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.4;">
+        Accessing vault: <strong id="faceAuthVaultName" style="color: var(--accent);"></strong>.<br>
+        Please enter your 6-digit Creator PIN to continue.
+      </p>
+      <label style="text-align: left; display: block;">Creator PIN</label>
+      <input type="password" id="faceAuthPinInput" placeholder="••••••" maxlength="6" style="margin-bottom: 20px; text-align: center; letter-spacing: 8px; font-size: 1.4rem; font-weight: 700; width: 100%;" />
+      
+      <div id="faceAuthPinError" style="color: var(--danger); font-size: 0.85rem; margin-top: -12px; margin-bottom: 16px; display: none;"></div>
+
+      <div class="modal-actions">
+        <button class="btn" id="faceAuthCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="faceAuthPinSubmitBtn"><i class="fas fa-arrow-right"></i> Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Face Camera Viewport -->
+    <div id="faceAuthCameraStep" style="display: none;">
+      <p id="faceAuthInstruction" style="margin-bottom: 20px; color: var(--accent); font-weight: 600; font-size: 0.95rem; min-height: 24px;">
+        Starting camera...
+      </p>
+      
+      <!-- Circular Viewport Container -->
+      <div style="position: relative; width: 220px; height: 220px; margin: 0 auto 20px auto; border-radius: 50%; overflow: hidden; border: 4px solid var(--accent); background: #000; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center;">
+        <video id="webcamVideo" autoplay muted playsinline style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+        <canvas id="webcamCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 2; pointer-events: none;"></canvas>
+        
+        <!-- Camera Loading Overlay -->
+        <div id="cameraLoadingSpinner" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(18, 18, 28, 0.8); z-index: 3;">
+          <i class="fas fa-circle-notch fa-spin" style="font-size: 2.5rem; color: var(--accent);"></i>
+        </div>
+      </div>
+      
+      <!-- Progress Bar indicator -->
+      <div style="height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 20px; width: 100%;">
+        <div id="faceAuthProgress" style="width: 0%; height: 100%; background: var(--green); transition: width 0.3s;"></div>
+      </div>
+
+      <div class="modal-actions" style="justify-content: center;">
+        <button class="btn" id="faceAuthCameraCloseBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Super Admin Login Modal -->
 <div class="modal-overlay" id="adminLoginModalOverlay">
   <div class="modal glass" style="background: var(--surface-solid); max-width: 400px;">
@@ -1369,13 +1422,30 @@
 
     async function safeFetch(url, options = {}) {
       if (!options.headers) options.headers = {};
-      const isCustomCall = url.includes('/vault/check') || url.includes('/vault/create') || url.includes('/admin/');
+      const isCustomCall = url.includes('/vault/check') || url.includes('/vault/create') || url.includes('/admin/') || url.includes('/api/auth/');
       if (!isCustomCall) {
         options.headers['x-vault-id'] = vaultId;
         const creatorToken = getCreatorToken();
         if (creatorToken) options.headers['x-creator-token'] = creatorToken;
+        
+        // Add Bearer JWT token if we have one for this vault
+        const sessionToken = localStorage.getItem(`webvault_session_token_${vaultId}`);
+        if (sessionToken) {
+          options.headers['Authorization'] = `Bearer ${sessionToken}`;
+        }
       }
+      
       const res = await fetch(url, options);
+      
+      if (res.status === 401) {
+        const errData = await res.clone().json().catch(() => ({}));
+        if (errData.code === 'FACE_AUTH_REQUIRED' || errData.code === 'SESSION_EXPIRED' || errData.code === 'INVALID_SESSION') {
+          // Open Face Authentication UI
+          showFaceAuthModal(vaultId);
+          throw new Error('Face Authentication required.');
+        }
+      }
+
       if (res.status === 409) {
         const errData = await res.json().catch(() => ({}));
         if (errData.code === 'VAULT_RENAMED') {
@@ -1402,6 +1472,9 @@
           return data;
         }
       } catch (e) {
+        if (e.message && (e.message.includes('Face') || e.message.includes('Authentication') || e.message.includes('expired'))) {
+          throw e; // Propagate auth errors so they don't fall back to local cached data
+        }
         console.warn('Backend offline, using localStorage fallback:', e);
       }
       const data = localStorage.getItem(getStorageKey());
@@ -1550,8 +1623,12 @@
       try {
         websites = await apiGet();
         websites = websites.map(w => ({ ...w, visits: w.visits || 0, history: w.history || [] }));
+        authRequired = false;
       } catch (e) {
         websites = [];
+        if (e.message && (e.message.includes('Face') || e.message.includes('Authentication') || e.message.includes('expired'))) {
+          authRequired = true;
+        }
       }
       await loadChatMessages();
     }
@@ -1825,6 +1902,33 @@
 
     // ----- render -----
     function render() {
+      if (authRequired) {
+        grid.innerHTML = `
+          <div class="empty-state" style="padding: 60px 20px; text-align: center;">
+            <i class="fas fa-user-lock" style="font-size:3.5rem;color:var(--accent);margin-bottom:16px;"></i>
+            <h3>Vault Locked</h3>
+            <p style="margin-top:8px;color:var(--text-secondary);max-width:320px;margin-left:auto;margin-right:auto;font-size:0.9rem;line-height:1.4;">
+              Face Authentication is required to access the applications in this vault.
+            </p>
+            <button class="btn btn-primary" id="btnUnlockVault" style="margin-top:20px;">
+              <i class="fas fa-key"></i> Unlock Vault
+            </button>
+          </div>
+        `;
+        
+        const btnUnlock = document.getElementById('btnUnlockVault');
+        if (btnUnlock) {
+          btnUnlock.addEventListener('click', () => showFaceAuthModal(vaultId));
+        }
+
+        totalSpan.textContent = '0';
+        favSpan.textContent = '0';
+        todaySpan.textContent = '0';
+        weekSpan.textContent = '0';
+        monthSpan.textContent = '0';
+        return;
+      }
+
       let filtered = [...websites];
       const q = searchInput.value.trim().toLowerCase();
       if (q) {
@@ -2088,6 +2192,374 @@
       }
     }
 
+    // ----- Face Authentication UI & AI Engine -----
+    const AUTH_API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000/api/auth'
+        : '/api/auth';
+
+    let faceApiLoaded = false;
+    let webcamStream = null;
+    let livenessLoopActive = false;
+    let authRequired = false;
+
+    function setFaceAuthInstruction(text, isError = false) {
+      const el = document.getElementById('faceAuthInstruction');
+      if (!el) return;
+      el.textContent = text;
+      el.style.color = isError ? 'var(--danger)' : 'var(--accent)';
+    }
+
+    function updateProgress(percent) {
+      const el = document.getElementById('faceAuthProgress');
+      if (el) el.style.width = `${percent}%`;
+    }
+
+    async function loadFaceApi() {
+      if (faceApiLoaded) return;
+      
+      setFaceAuthInstruction("Loading Face AI Library...");
+      
+      if (typeof faceapi === 'undefined') {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load Face AI from CDN'));
+          document.head.appendChild(script);
+        });
+      }
+      
+      setFaceAuthInstruction("Loading Face AI Models...");
+      
+      const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+      
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      ]);
+      
+      faceApiLoaded = true;
+    }
+
+    async function startWebcam(videoEl) {
+      if (webcamStream) stopWebcam();
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: 'user' }
+        });
+        videoEl.srcObject = stream;
+        webcamStream = stream;
+        document.getElementById('cameraLoadingSpinner').style.display = 'none';
+        return true;
+      } catch (err) {
+        console.error('Webcam access error:', err);
+        setFaceAuthInstruction("Camera access failed. Check permissions.", true);
+        alert("Webcam access failed. Please enable webcam permissions.");
+        return false;
+      }
+    }
+
+    function stopWebcam() {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+      }
+      const spinner = document.getElementById('cameraLoadingSpinner');
+      if (spinner) spinner.style.display = 'flex';
+    }
+
+    function getDistance(p1, p2) {
+      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
+
+    function calculateEAR(eyeLandmarks) {
+      const a = getDistance(eyeLandmarks[1], eyeLandmarks[5]);
+      const b = getDistance(eyeLandmarks[2], eyeLandmarks[4]);
+      const c = getDistance(eyeLandmarks[0], eyeLandmarks[3]);
+      return (a + b) / (2.0 * c);
+    }
+
+    async function runLivenessCheck(videoEl, canvasEl, isRegisterMode, tempToken, activeId) {
+      const displaySize = { width: videoEl.offsetWidth || 220, height: videoEl.offsetHeight || 220 };
+      faceapi.matchDimensions(canvasEl, displaySize);
+      
+      livenessLoopActive = true;
+      let blinkDetected = false;
+      let blinkState = 'open';
+      let capturedEmbedding = null;
+      
+      const ctx = canvasEl.getContext('2d');
+      setFaceAuthInstruction("Position your face & BLINK to verify liveness.");
+      updateProgress(10);
+      
+      const detectFace = async () => {
+        if (!livenessLoopActive) return;
+        
+        try {
+          const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+          const detection = await faceapi.detectSingleFace(videoEl, options)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+            
+          ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+          
+          if (detection) {
+            updateProgress(30);
+            const resizedDetection = faceapi.resizeResults(detection, displaySize);
+            
+            // Draw premium landmarks UI
+            faceapi.draw.drawFaceLandmarks(canvasEl, resizedDetection);
+            
+            const landmarks = detection.landmarks;
+            const leftEye = landmarks.getLeftEye();
+            const rightEye = landmarks.getRightEye();
+            
+            const leftEAR = calculateEAR(leftEye);
+            const rightEAR = calculateEAR(rightEye);
+            const avgEAR = (leftEAR + rightEAR) / 2.0;
+            
+            if (blinkState === 'open' && avgEAR < 0.17) {
+              blinkState = 'closed';
+              updateProgress(60);
+              setFaceAuthInstruction("Eye closure detected. Now open your eyes.");
+            } else if (blinkState === 'closed' && avgEAR > 0.23) {
+              blinkState = 'open';
+              blinkDetected = true;
+              updateProgress(90);
+              setFaceAuthInstruction("Liveness verified! Extracting embedding...");
+            }
+            
+            if (blinkDetected) {
+              capturedEmbedding = Array.from(detection.descriptor);
+              livenessLoopActive = false;
+              stopWebcam();
+              
+              if (isRegisterMode) {
+                await submitFaceRegistration(capturedEmbedding, tempToken, activeId);
+              } else {
+                await submitFaceVerification(capturedEmbedding, activeId);
+              }
+              return;
+            }
+          } else {
+            setFaceAuthInstruction("No face detected. Center yourself.", true);
+            updateProgress(10);
+          }
+        } catch (err) {
+          console.error("Frame tracking error:", err);
+        }
+        
+        if (livenessLoopActive) {
+          requestAnimationFrame(detectFace);
+        }
+      };
+      
+      detectFace();
+    }
+
+    async function showFaceAuthModal(targetId, forceSetup = false) {
+      const modal = document.getElementById('faceAuthModalOverlay');
+      const pinStep = document.getElementById('faceAuthPinStep');
+      const cameraStep = document.getElementById('faceAuthCameraStep');
+      const vaultNameEl = document.getElementById('faceAuthVaultName');
+      const pinInput = document.getElementById('faceAuthPinInput');
+      const pinError = document.getElementById('faceAuthPinError');
+      const titleEl = document.getElementById('faceAuthTitle');
+
+      vaultNameEl.textContent = targetId;
+      pinInput.value = '';
+      pinError.style.display = 'none';
+      
+      modal.classList.add('open');
+      
+      if (forceSetup) {
+        titleEl.textContent = "Face Authentication Setup";
+        pinStep.style.display = 'none';
+        cameraStep.style.display = 'block';
+        
+        const tempToken = localStorage.getItem(`webvault_creator_token_${targetId}`); // fallback to creator token
+        await startFaceScanning(true, tempToken, targetId);
+      } else {
+        titleEl.textContent = "Vault Authentication";
+        pinStep.style.display = 'block';
+        cameraStep.style.display = 'none';
+        setTimeout(() => pinInput.focus(), 100);
+      }
+    }
+
+    function closeFaceAuthModal() {
+      livenessLoopActive = false;
+      stopWebcam();
+      document.getElementById('faceAuthModalOverlay').classList.remove('open');
+    }
+
+    async function startFaceScanning(isRegisterMode, token, activeId) {
+      const video = document.getElementById('webcamVideo');
+      const canvas = document.getElementById('webcamCanvas');
+      
+      try {
+        await loadFaceApi();
+        const started = await startWebcam(video);
+        if (!started) {
+          closeFaceAuthModal();
+          return;
+        }
+        await runLivenessCheck(video, canvas, isRegisterMode, token, activeId);
+      } catch (err) {
+        alert("Error during scanning setup: " + err.message);
+        closeFaceAuthModal();
+      }
+    }
+
+    async function submitFaceRegistration(embedding, tempToken, activeId) {
+      setFaceAuthInstruction("Saving secure face credentials...");
+      updateProgress(95);
+      
+      try {
+        const res = await fetch(`${AUTH_API_BASE}/register-face`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tempToken}`
+          },
+          body: JSON.stringify({ embedding })
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem(`webvault_session_token_${activeId}`, data.token);
+          authRequired = false;
+          updateProgress(100);
+          setFaceAuthInstruction("Authentication Setup Successful!");
+          setTimeout(() => {
+            closeFaceAuthModal();
+            loadFromServer().then(() => render());
+          }, 1200);
+        } else {
+          alert("Registration failed: " + (data.error || "Unknown error"));
+          closeFaceAuthModal();
+        }
+      } catch (err) {
+        alert("Registration error: " + err.message);
+        closeFaceAuthModal();
+      }
+    }
+
+    async function submitFaceVerification(embedding, activeId) {
+      setFaceAuthInstruction("Verifying face credentials...");
+      updateProgress(95);
+      
+      try {
+        const res = await fetch(`${AUTH_API_BASE}/verify-face`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vaultId: activeId, embedding })
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem(`webvault_session_token_${activeId}`, data.token);
+          authRequired = false;
+          updateProgress(100);
+          setFaceAuthInstruction("Access Granted!");
+          setTimeout(() => {
+            closeFaceAuthModal();
+            loadFromServer().then(() => render());
+          }, 1200);
+        } else {
+          // verification failed or account locked
+          if (res.status === 423) {
+            alert(data.error || "Account locked.");
+            closeFaceAuthModal();
+          } else {
+            // normal failure
+            const pinStep = document.getElementById('faceAuthPinStep');
+            const cameraStep = document.getElementById('faceAuthCameraStep');
+            const pinError = document.getElementById('faceAuthPinError');
+            
+            pinError.textContent = data.error || "Face verification failed.";
+            pinError.style.display = 'block';
+            
+            // Go back to PIN
+            cameraStep.style.display = 'none';
+            pinStep.style.display = 'block';
+            stopWebcam();
+          }
+        }
+      } catch (err) {
+        alert("Verification error: " + err.message);
+        closeFaceAuthModal();
+      }
+    }
+
+    // Wire Face Auth Modal DOM Event Listeners
+    setTimeout(() => {
+      const pinSubmitBtn = document.getElementById('faceAuthPinSubmitBtn');
+      const pinInput = document.getElementById('faceAuthPinInput');
+      const cancelBtn = document.getElementById('faceAuthCancelBtn');
+      const cameraCloseBtn = document.getElementById('faceAuthCameraCloseBtn');
+      
+      if (pinInput) {
+        pinInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') pinSubmitBtn.click();
+        });
+      }
+
+      if (cancelBtn) cancelBtn.addEventListener('click', closeFaceAuthModal);
+      if (cameraCloseBtn) cameraCloseBtn.addEventListener('click', closeFaceAuthModal);
+
+      if (pinSubmitBtn) {
+        pinSubmitBtn.addEventListener('click', async () => {
+          const pin = pinInput.value.trim();
+          const pinError = document.getElementById('faceAuthPinError');
+          if (pin.length !== 6 || isNaN(pin)) {
+            pinError.textContent = "PIN must be exactly 6 digits.";
+            pinError.style.display = 'block';
+            return;
+          }
+
+          pinError.style.display = 'none';
+          pinSubmitBtn.disabled = true;
+          pinSubmitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+          
+          try {
+            const res = await fetch(`${AUTH_API_BASE}/login-password`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ vaultId, creatorPin: pin })
+            });
+            
+            const data = await res.json();
+            pinSubmitBtn.disabled = false;
+            pinSubmitBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Next';
+
+            if (res.ok) {
+              const pinStep = document.getElementById('faceAuthPinStep');
+              const cameraStep = document.getElementById('faceAuthCameraStep');
+              pinStep.style.display = 'none';
+              cameraStep.style.display = 'block';
+              
+              if (data.faceAuthRequired) {
+                await startFaceScanning(false, null, vaultId);
+              } else if (data.setupRequired) {
+                await startFaceScanning(true, data.token, vaultId);
+              }
+            } else {
+              pinError.textContent = data.error || "Login failed.";
+              pinError.style.display = 'block';
+            }
+          } catch (err) {
+            pinSubmitBtn.disabled = false;
+            pinSubmitBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Next';
+            pinError.textContent = "Error: " + err.message;
+            pinError.style.display = 'block';
+          }
+        });
+      }
+    }, 100);
+
     // Toggle to stop the website and show an error (set to false to run normal operations)
     const IS_WEBSITE_STOPPED = false;
 
@@ -2232,32 +2704,38 @@
             const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
             await apiCreateVault(targetId, token, cleanedPin);
             localStorage.setItem(`webvault_creator_token_${targetId}`, token);
+            
+            localStorage.setItem('webvault_vault_id', targetId);
+            vaultId = targetId;
+            updateProfileDisplay();
+            profileModalOverlay.classList.remove('open');
+            onVaultChange();
+            
+            // Immediately open Face Authentication setup modal
+            showFaceAuthModal(targetId, true);
           } else {
-            // Generate a creator token for this email if it doesn't already exist on this device
-            // (Only for private vaults that already exist, in case they are restoring their own vault)
-            if (isPrivate && !localStorage.getItem(`webvault_creator_token_${targetId}`)) {
-              const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-              localStorage.setItem(`webvault_creator_token_${targetId}`, token);
+            // Vault exists! Switch to it and trigger Face Auth / verification
+            localStorage.setItem('webvault_vault_id', targetId);
+            vaultId = targetId;
+            updateProfileDisplay();
+            profileModalOverlay.classList.remove('open');
+            onVaultChange();
+
+            const sessionToken = localStorage.getItem(`webvault_session_token_${targetId}`);
+            if (sessionToken) {
+              websites = [];
+              grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
+              await loadFromServer();
+              render();
+              renderCharts();
+            } else {
+              showFaceAuthModal(targetId, false);
             }
           }
         } catch (e) {
           alert('Vault Registration Error: ' + e.message);
           return;
         }
-
-        localStorage.setItem('webvault_vault_id', targetId);
-        vaultId = targetId;
-
-        updateProfileDisplay();
-        profileModalOverlay.classList.remove('open');
-        onVaultChange();
-
-        // reload data
-        websites = [];
-        grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
-        await loadFromServer();
-        render();
-        renderCharts();
       });
 
       btnUseLocalDevice.addEventListener('click', async () => {
@@ -2276,23 +2754,19 @@
         try {
           await apiCreateVault(newId, token, cleanedPin);
           localStorage.setItem(`webvault_creator_token_${newId}`, token);
+          
+          localStorage.setItem('webvault_vault_id', newId);
+          vaultId = newId;
+          updateProfileDisplay();
+          profileModalOverlay.classList.remove('open');
+          onVaultChange();
+
+          // Immediately open Face Authentication setup modal
+          showFaceAuthModal(newId, true);
         } catch (e) {
           alert('Vault Registration Error: ' + e.message);
           return;
         }
-
-        localStorage.setItem('webvault_vault_id', newId);
-        vaultId = newId;
-        updateProfileDisplay();
-        profileModalOverlay.classList.remove('open');
-        onVaultChange();
-
-        // reload data
-        websites = [];
-        grid.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i></div>';
-        await loadFromServer();
-        render();
-        renderCharts();
       });
 
       // Share Modal Listeners
